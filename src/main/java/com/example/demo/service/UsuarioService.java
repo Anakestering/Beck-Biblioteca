@@ -35,11 +35,6 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 encoder.encode(
                         usuario.getSenha()));
 
-        if (repo.existsByUsuario(usuario.getUsuario())) {
-            throw new RuntimeException(
-                    "Usuário já existe");
-        }
-
         repo.save(usuario);
 
     }

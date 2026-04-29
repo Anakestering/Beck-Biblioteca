@@ -26,6 +26,8 @@ public class DataInitializer {
 
                 usuario.setEmail("admin@admin.com");
                 usuario.setNivelAcesso(NivelAcesso.ADMIN);
+                usuario.setCpf("100");
+                usuario.setNome("Eemplo");
                 usuario.setSenha(passwordEncoder.encode("123456789"));
 
                 repository.save(usuario);
