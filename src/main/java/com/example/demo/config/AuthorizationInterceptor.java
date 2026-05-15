@@ -2,6 +2,8 @@ package com.example.demo.config;
 
 import com.example.demo.annotations.Admin;
 import com.example.demo.annotations.Public;
+
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,17 @@ public class AuthorizationInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        
+        if (request.getDispatcherType() == DispatcherType.ERROR || "/error".equals(request.getRequestURI())) {
+            return true;
+        }
+
+        String uri = request.getRequestURI();
+        if (uri.startsWith("/swagger-ui") || uri.startsWith("/v3/api-docs")) {
+            return true;
+        }
+        
+        
         if (!(handler instanceof HandlerMethod handlerMethod)) {
             return true;
         }
