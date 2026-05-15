@@ -17,12 +17,10 @@ public class ReservaSala extends BaseEntity {
     @JoinColumn(name = "sala_id", nullable = false)
     private Sala sala;
 
-    // Dono da reserva (para quem foi feita)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
-    // Quem criou (pode ser admin criando para outro)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "criada_por_usuario_id", nullable = false)
     private Usuario criadaPorUsuario;
@@ -30,7 +28,6 @@ public class ReservaSala extends BaseEntity {
     @Column(name = "inicio_previsto", nullable = false)
     private LocalDateTime inicioPrevisto;
 
-    // Sempre inicio + 45 min, calculado no service
     @Column(name = "fim_previsto", nullable = false)
     private LocalDateTime fimPrevisto;
 
@@ -47,8 +44,8 @@ public class ReservaSala extends BaseEntity {
     @Column(name = "cancelada_em")
     private LocalDateTime canceladaEm;
 
-    @Column(name = "atrasado_em")
-    private LocalDateTime noShowEm;
+    @Column(name = "atrasado_em")       
+    private LocalDateTime atrasadoEm;
 
     @Column(name = "checkin_em")
     private LocalDateTime checkinEm;

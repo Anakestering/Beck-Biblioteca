@@ -11,9 +11,8 @@ import lombok.*;
 @EqualsAndHashCode(callSuper = false)
 public class Computador extends BaseEntity {
 
-
     @Column(name = "codigo", nullable = false, unique = true)
-    private String codigo; // patrimônio/etiqueta
+    private String codigo;
 
     @Column(name = "capacidade_pessoas", nullable = false)
     private int capacidadePessoas = 2;

@@ -7,15 +7,12 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long> {
 
-    /**
-     * Verifica sobreposição de horário para a mesma sala.
-     * Condição de overlap: inicio < fimExistente AND fim > inicioExistente
-     * Considera apenas status que "bloqueiam" o recurso.
-     */
+    // Verifica sobreposição de horário para a mesma sala
     @Query("""
         SELECT r FROM ReservaSala r
         WHERE r.sala.id = :salaId
@@ -31,9 +28,38 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
             List<StatusReserva> statusBloqueadores
     );
 
-    /**
-     * Busca reservas ativas de um usuário.
-     */
+    // Busca reserva do usuário nesta sala que termina exatamente em fimPrevisto (para contar consecutivos para trás)
+    @Query("""
+        SELECT r FROM ReservaSala r
+        WHERE r.usuario.id = :usuarioId
+          AND r.sala.id = :salaId
+          AND r.fimPrevisto = :fimPrevisto
+          AND r.status IN :statusBloqueadores
+          AND r.ativo = TRUE
+    """)
+    Optional<ReservaSala> findByUsuarioIdESalaIdEFimPrevisto(
+            Long usuarioId,
+            Long salaId,
+            LocalDateTime fimPrevisto,
+            List<StatusReserva> statusBloqueadores
+    );
+
+    // Busca reserva do usuário nesta sala que começa exatamente em inicioPrevisto (para contar consecutivos para frente)
+    @Query("""
+        SELECT r FROM ReservaSala r
+        WHERE r.usuario.id = :usuarioId
+          AND r.sala.id = :salaId
+          AND r.inicioPrevisto = :inicioPrevisto
+          AND r.status IN :statusBloqueadores
+          AND r.ativo = TRUE
+    """)
+    Optional<ReservaSala> findByUsuarioIdESalaIdEInicioPrevisto(
+            Long usuarioId,
+            Long salaId,
+            LocalDateTime inicioPrevisto,
+            List<StatusReserva> statusBloqueadores
+    );
+
     @Query("""
         SELECT r FROM ReservaSala r
         WHERE r.usuario.id = :usuarioId
@@ -42,9 +68,7 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
     """)
     List<ReservaSala> findByUsuarioId(Long usuarioId);
 
-    /**
-     * Busca reservas EM_ANDAMENTO que ultrapassaram o fim previsto (para auto checkout).
-     */
+    // Reservas EM_ANDAMENTO que já passaram do fim (auto checkout)
     @Query("""
         SELECT r FROM ReservaSala r
         WHERE r.status = 'EM_ANDAMENTO'
@@ -54,9 +78,7 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
     """)
     List<ReservaSala> findParaAutoCheckout(LocalDateTime agora);
 
-    /**
-     * Busca reservas APROVADAS com inicio há mais de 15min e sem check-in (no-show).
-     */
+    // Reservas APROVADAS sem check-in depois dos 15min de tolerância
     @Query("""
         SELECT r FROM ReservaSala r
         WHERE r.status = 'APROVADA'
@@ -64,5 +86,5 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
           AND r.checkinEm IS NULL
           AND r.ativo = TRUE
     """)
-    List<ReservaSala> findParaNoShow(LocalDateTime limite);
+    List<ReservaSala> findParaAtrasado(LocalDateTime limite);
 }

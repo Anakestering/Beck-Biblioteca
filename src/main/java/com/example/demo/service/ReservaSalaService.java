@@ -14,10 +14,16 @@ import java.util.List;
 @Service
 public class ReservaSalaService {
 
-    // Duração fixa de 45 minutos
+    // Duração fixa de cada reserva
     private static final int DURACAO_MINUTOS = 45;
 
-    // Status que bloqueiam o recurso para sobreposição
+    // Limite de tempos consecutivos antes de exigir aprovação (3 × 45min = 135min)
+    private static final int MAX_TEMPOS_SEM_APROVACAO = 4;
+
+    // Check-in: de 5min antes até 15min depois
+    private static final int CHECKIN_ANTECEDENCIA_MIN = 5;
+    private static final int CHECKIN_TOLERANCIA_MIN = 15;
+
     private static final List<StatusReserva> STATUS_BLOQUEADORES = List.of(
             StatusReserva.APROVADA,
             StatusReserva.PENDENTE_APROVACAO,
@@ -41,7 +47,7 @@ public class ReservaSalaService {
         this.aprovacaoRepo = aprovacaoRepo;
     }
 
-    // ─── Criar reserva ────────────────────────────────────────────────────────
+    // ─── Criar ────────────────────────────────────────────────────────────────
 
     @Transactional
     public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
@@ -51,14 +57,13 @@ public class ReservaSalaService {
         Usuario usuarioLogado = usuarioRepo.findByEmail(emailUsuarioLogado)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
 
-        // Dono da reserva: se admin informou outro usuário, usa esse; senão, o próprio logado
         Usuario dono = (dto.getUsuarioId() != null)
                 ? usuarioRepo.findById(dto.getUsuarioId())
-                        .orElseThrow(() -> new RuntimeException("Usuário dono não encontrado."))
+                        .orElseThrow(() -> new RuntimeException("Usuário não encontrado."))
                 : usuarioLogado;
 
         LocalDateTime inicio = dto.getInicioPrevisto();
-        LocalDateTime fim = inicio.plusMinutes(DURACAO_MINUTOS); // sempre 45min
+        LocalDateTime fim = inicio.plusMinutes(DURACAO_MINUTOS);
 
         // Validação de capacidade
         if (dto.getQtdePessoas() > sala.getCapacidadePessoas()) {
@@ -67,13 +72,14 @@ public class ReservaSalaService {
             );
         }
 
-        // Validação de sobreposição
-        List<ReservaSala> sobrepostas = reservaRepo.findSobrepostas(
-                sala.getId(), inicio, fim, STATUS_BLOQUEADORES
-        );
-        if (!sobrepostas.isEmpty()) {
+        // Validação de sobreposição (sala já reservada nesse horário)
+        if (!reservaRepo.findSobrepostas(sala.getId(), inicio, fim, STATUS_BLOQUEADORES).isEmpty()) {
             throw new RuntimeException("Já existe uma reserva para esta sala neste horário.");
         }
+
+        // Verifica se o usuário tem reservas consecutivas nesta sala (blocos contínuos)
+        int temposConsecutivos = contarTemposConsecutivos(dono.getId(), sala.getId(), inicio, fim);
+        boolean precisaAprovacao = temposConsecutivos > MAX_TEMPOS_SEM_APROVACAO;
 
         ReservaSala reserva = new ReservaSala();
         reserva.setSala(sala);
@@ -83,17 +89,12 @@ public class ReservaSalaService {
         reserva.setFimPrevisto(fim);
         reserva.setQtdePessoas(dto.getQtdePessoas());
         reserva.setObservacao(dto.getObservacao());
+        reserva.setStatus(precisaAprovacao ? StatusReserva.PENDENTE_APROVACAO : StatusReserva.APROVADA);
 
-        // Reserva de 45min nunca passa de 3h, então sempre vai direto para APROVADA.
-        // Mas mantemos a lógica aqui para o caso de a duração ser ajustada futuramente.
-        long duracaoHoras = java.time.Duration.between(inicio, fim).toHours();
-        if (duracaoHoras > 3) {
-            reserva.setStatus(StatusReserva.PENDENTE_APROVACAO);
-            reserva = reservaRepo.save(reserva);
+        reserva = reservaRepo.save(reserva);
+
+        if (precisaAprovacao) {
             criarAprovacao(reserva, null);
-        } else {
-            reserva.setStatus(StatusReserva.APROVADA);
-            reserva = reservaRepo.save(reserva);
         }
 
         return reserva;
@@ -104,20 +105,21 @@ public class ReservaSalaService {
     @Transactional
     public ReservaSala checkin(Long reservaId, String emailUsuarioLogado) {
         ReservaSala reserva = buscarAtiva(reservaId);
-        validarDonoOuAdmin(reserva.getUsuario().getEmail(), emailUsuarioLogado);
+        validarDono(reserva.getUsuario().getEmail(), emailUsuarioLogado);
 
         if (reserva.getStatus() != StatusReserva.APROVADA) {
             throw new RuntimeException("Check-in só é permitido para reservas com status APROVADA.");
         }
 
         LocalDateTime agora = LocalDateTime.now();
-        LocalDateTime janelaInicio = reserva.getInicioPrevisto().minusMinutes(15);
-        LocalDateTime janelaFim = reserva.getInicioPrevisto().plusMinutes(15);
+        LocalDateTime janelaInicio = reserva.getInicioPrevisto().minusMinutes(CHECKIN_ANTECEDENCIA_MIN);
+        LocalDateTime janelaFim = reserva.getInicioPrevisto().plusMinutes(CHECKIN_TOLERANCIA_MIN);
 
-        if (agora.isBefore(janelaInicio) || agora.isAfter(janelaFim)) {
-            throw new RuntimeException(
-                    "Check-in permitido somente entre 15min antes e 15min após o início previsto."
-            );
+        if (agora.isBefore(janelaInicio)) {
+            throw new RuntimeException("Check-in disponível somente a partir de " + CHECKIN_ANTECEDENCIA_MIN + " minutos antes do início.");
+        }
+        if (agora.isAfter(janelaFim)) {
+            throw new RuntimeException("Prazo de check-in encerrado. A reserva será marcada como atrasada.");
         }
 
         reserva.setCheckinEm(agora);
@@ -130,7 +132,7 @@ public class ReservaSalaService {
     @Transactional
     public ReservaSala checkout(Long reservaId, String emailUsuarioLogado) {
         ReservaSala reserva = buscarAtiva(reservaId);
-        validarDonoOuAdmin(reserva.getUsuario().getEmail(), emailUsuarioLogado);
+        validarDono(reserva.getUsuario().getEmail(), emailUsuarioLogado);
 
         if (reserva.getStatus() != StatusReserva.EM_ANDAMENTO) {
             throw new RuntimeException("Check-out só é permitido para reservas em andamento.");
@@ -147,16 +149,14 @@ public class ReservaSalaService {
     @Transactional
     public ReservaSala cancelar(Long reservaId, String emailUsuarioLogado) {
         ReservaSala reserva = buscarAtiva(reservaId);
-        validarDonoOuAdmin(reserva.getUsuario().getEmail(), emailUsuarioLogado);
+        validarDono(reserva.getUsuario().getEmail(), emailUsuarioLogado);
 
-        if (reserva.getStatus() == StatusReserva.CANCELADA
-                || reserva.getStatus() == StatusReserva.FINALIZADA
-                || reserva.getStatus() == StatusReserva.ATRASADO) {
-            throw new RuntimeException("Reserva já encerrada, não pode ser cancelada.");
+        if (List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
+                .contains(reserva.getStatus())) {
+            throw new RuntimeException("Esta reserva já foi encerrada.");
         }
 
-        LocalDateTime limiteParaCancelar = reserva.getInicioPrevisto().minusHours(1);
-        if (LocalDateTime.now().isAfter(limiteParaCancelar)) {
+        if (LocalDateTime.now().isAfter(reserva.getInicioPrevisto().minusHours(1))) {
             throw new RuntimeException("Cancelamento permitido somente até 1h antes do início.");
         }
 
@@ -165,52 +165,87 @@ public class ReservaSalaService {
         return reservaRepo.save(reserva);
     }
 
-    // ─── Jobs automáticos (chamados pelo Scheduler) ───────────────────────────
+    // ─── Jobs automáticos ─────────────────────────────────────────────────────
 
     @Transactional
     public void processarAutoCheckout() {
-        List<ReservaSala> reservas = reservaRepo.findParaAutoCheckout(LocalDateTime.now());
-        for (ReservaSala r : reservas) {
+        reservaRepo.findParaAutoCheckout(LocalDateTime.now()).forEach(r -> {
             r.setCheckoutEm(r.getFimPrevisto());
             r.setCheckoutAutomatico(true);
             r.setStatus(StatusReserva.FINALIZADA);
             reservaRepo.save(r);
-        }
+        });
     }
 
     @Transactional
-    public void processarNoShow() {
-        // Marca como no-show reservas APROVADAS cujo início passou há mais de 15min sem check-in
-        LocalDateTime limite = LocalDateTime.now().minusMinutes(15);
-        List<ReservaSala> reservas = reservaRepo.findParaNoShow(limite);
-        for (ReservaSala r : reservas) {
+    public void processarAtrasado() {
+        // Passou 15min do início sem check-in → ATRASADO
+        LocalDateTime limite = LocalDateTime.now().minusMinutes(CHECKIN_TOLERANCIA_MIN);
+        reservaRepo.findParaAtrasado(limite).forEach(r -> {
             r.setStatus(StatusReserva.ATRASADO);
-            r.setNoShowEm(LocalDateTime.now());
+            r.setAtrasadoEm(LocalDateTime.now());
             reservaRepo.save(r);
-        }
+        });
     }
 
     // ─── Listagens ────────────────────────────────────────────────────────────
 
-    public List<ReservaSala> listarPorUsuario(Long usuarioId) {
-        return reservaRepo.findByUsuarioId(usuarioId);
+    public List<ReservaSala> listarPorEmailUsuario(String email) {
+        Usuario usuario = usuarioRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
+        return reservaRepo.findByUsuarioId(usuario.getId());
+    }
+
+    public List<ReservaSala> listarTodas() {
+        return reservaRepo.findAll();
     }
 
     // ─── Helpers privados ─────────────────────────────────────────────────────
 
+    /**
+     * Conta quantos tempos consecutivos o usuário já tem nesta sala
+     * encostados no início da nova reserva.
+     * Exemplo: se ele já tem 2 reservas encadenadas terminando exatamente
+     * em `inicio`, o bloco atual seria o 3º — se passar de 3, exige aprovação.
+     */
+    private int contarTemposConsecutivos(Long usuarioId, Long salaId, LocalDateTime inicio, LocalDateTime fim) {
+        int count = 1; // conta a reserva que está sendo criada
+
+        // Verifica para trás (reservas que terminam exatamente onde a nova começa)
+        LocalDateTime cursor = inicio;
+        while (true) {
+            LocalDateTime cursorFinal = cursor;
+            boolean temAnterior = reservaRepo
+                    .findByUsuarioIdESalaIdEFimPrevisto(usuarioId, salaId, cursorFinal, STATUS_BLOQUEADORES)
+                    .isPresent();
+            if (!temAnterior) break;
+            count++;
+            cursor = cursor.minusMinutes(DURACAO_MINUTOS);
+        }
+
+        // Verifica para frente (reservas que começam exatamente onde a nova termina)
+        cursor = fim;
+        while (true) {
+            LocalDateTime cursorInicio = cursor;
+            boolean temProxima = reservaRepo
+                    .findByUsuarioIdESalaIdEInicioPrevisto(usuarioId, salaId, cursorInicio, STATUS_BLOQUEADORES)
+                    .isPresent();
+            if (!temProxima) break;
+            count++;
+            cursor = cursor.plusMinutes(DURACAO_MINUTOS);
+        }
+
+        return count;
+    }
+
     private ReservaSala buscarAtiva(Long id) {
         return reservaRepo.findById(id)
-                .filter(r -> r.isAtivo())
+                .filter(ReservaSala::isAtivo)
                 .orElseThrow(() -> new RuntimeException("Reserva não encontrada."));
     }
 
-    private void validarDonoOuAdmin(String emailDono, String emailLogado) {
-        // Admin pode agir em qualquer reserva; usuário só na sua
-        // A verificação de role ADMIN deve ser feita no Controller via @Admin
-        // Aqui garantimos que o usuário comum só age na própria reserva
+    private void validarDono(String emailDono, String emailLogado) {
         if (!emailDono.equals(emailLogado)) {
-            // Se chegou aqui sem ser admin, o Spring Security já deveria ter bloqueado.
-            // Mantemos como dupla proteção.
             throw new RuntimeException("Você não tem permissão para alterar esta reserva.");
         }
     }

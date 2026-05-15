@@ -13,13 +13,12 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = false)
 public class AprovacaoReserva extends BaseEntity {
 
-    // Apenas uma das duas será preenchida (SALA ou PC)
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reserva_sala_id", unique = true)
     private ReservaSala reservaSala;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reserva_computador_id", unique = true)
+    @JoinColumn(name = "reserva_computador_id", unique = true)   // era reserva_pc_id
     private ReservaComputador reservaComputador;
 
     @Enumerated(EnumType.STRING)

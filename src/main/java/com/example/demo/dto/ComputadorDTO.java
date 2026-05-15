@@ -12,9 +12,6 @@ public class ComputadorDTO {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long id;
 
-    @NotNull(message = "O ID da sala deve ser informado.")
-    private Long salaId;
-
     @NotBlank(message = "O código do computador deve ser preenchido.")
     private String codigo;
 

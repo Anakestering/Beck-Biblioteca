@@ -7,10 +7,12 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReservaComputadorRepository extends BaseRepository<ReservaComputador, Long> {
 
+    // Verifica sobreposição de horário para o mesmo computador
     @Query("""
         SELECT r FROM ReservaComputador r
         WHERE r.computador.id = :computadorId
@@ -23,6 +25,54 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
             Long computadorId,
             LocalDateTime inicio,
             LocalDateTime fim,
+            List<StatusReserva> statusBloqueadores
+    );
+
+    // Conta quantos PCs diferentes o usuário já reservou neste mesmo intervalo de horário
+    @Query("""
+        SELECT COUNT(DISTINCT r.computador.id) FROM ReservaComputador r
+        WHERE r.usuario.id = :usuarioId
+          AND r.status IN :statusBloqueadores
+          AND r.inicioPrevisto < :fim
+          AND r.fimPrevisto > :inicio
+          AND r.ativo = TRUE
+    """)
+    int countPcsDoUsuarioNoHorario(
+            Long usuarioId,
+            LocalDateTime inicio,
+            LocalDateTime fim,
+            List<StatusReserva> statusBloqueadores
+    );
+
+    // Busca reserva do usuário neste computador que termina exatamente em fimPrevisto (consecutivos para trás)
+    @Query("""
+        SELECT r FROM ReservaComputador r
+        WHERE r.usuario.id = :usuarioId
+          AND r.computador.id = :computadorId
+          AND r.fimPrevisto = :fimPrevisto
+          AND r.status IN :statusBloqueadores
+          AND r.ativo = TRUE
+    """)
+    Optional<ReservaComputador> findByUsuarioIdEComputadorIdEFimPrevisto(
+            Long usuarioId,
+            Long computadorId,
+            LocalDateTime fimPrevisto,
+            List<StatusReserva> statusBloqueadores
+    );
+
+    // Busca reserva do usuário neste computador que começa exatamente em inicioPrevisto (consecutivos para frente)
+    @Query("""
+        SELECT r FROM ReservaComputador r
+        WHERE r.usuario.id = :usuarioId
+          AND r.computador.id = :computadorId
+          AND r.inicioPrevisto = :inicioPrevisto
+          AND r.status IN :statusBloqueadores
+          AND r.ativo = TRUE
+    """)
+    Optional<ReservaComputador> findByUsuarioIdEComputadorIdEInicioPrevisto(
+            Long usuarioId,
+            Long computadorId,
+            LocalDateTime inicioPrevisto,
             List<StatusReserva> statusBloqueadores
     );
 
@@ -50,5 +100,5 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
           AND r.checkinEm IS NULL
           AND r.ativo = TRUE
     """)
-    List<ReservaComputador> findParaNoShow(LocalDateTime limite);
+    List<ReservaComputador> findParaAtrasado(LocalDateTime limite);
 }

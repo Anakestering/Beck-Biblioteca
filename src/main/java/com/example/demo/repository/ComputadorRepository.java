@@ -5,5 +5,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ComputadorRepository extends BaseRepository<Computador, Long> {
+
     boolean existsByCodigo(String codigo);
 }
