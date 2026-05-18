@@ -16,6 +16,14 @@ public class UsuarioDTO {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long id;
 
+    @NotBlank(message = "O nome deve ser preenchido.")
+    private String nome;
+
+    @NotBlank(message = "O CPF deve ser preenchido.")
+    private String cpf;
+
+    private String telefone;
+
     @Email(message = "O email deve ser válido.")
     @NotBlank(message = "O email deve ser preenchido.")
     private String email;
@@ -23,4 +31,12 @@ public class UsuarioDTO {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String senha;
 
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Boolean ativo;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String nivelAcesso;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private java.time.LocalDateTime createdAt;
 }

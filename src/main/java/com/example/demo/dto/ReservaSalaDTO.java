@@ -6,8 +6,6 @@ import jakarta.validation.constraints.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
-// ─── ReservaSalaDTO ───────────────────────────────────────────────────────────
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -19,16 +17,11 @@ public class ReservaSalaDTO {
     @NotNull(message = "O ID da sala deve ser informado.")
     private Long salaId;
 
-    // usuarioId: quem é o dono da reserva
-    // Se não informado, usa o usuário logado
     private Long usuarioId;
 
     @NotNull(message = "O início da reserva deve ser informado.")
-    @Future(message = "O início deve ser uma data futura.")
     private LocalDateTime inicioPrevisto;
 
-    // fimPrevisto é calculado automaticamente (inicio + 45min)
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime fimPrevisto;
 
     @Min(value = 1, message = "Mínimo de 1 pessoa.")

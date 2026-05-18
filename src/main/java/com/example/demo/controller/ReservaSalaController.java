@@ -6,10 +6,10 @@ import com.example.demo.entity.ReservaSala;
 import com.example.demo.service.ReservaSalaService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -24,47 +24,37 @@ public class ReservaSalaController {
     }
 
     @PostMapping
-    public ResponseEntity<ReservaSala> criar(
-            @RequestBody @Valid ReservaSalaDTO dto,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        ReservaSala reserva = service.criar(dto, userDetails.getUsername());
-        return ResponseEntity.ok(reserva);
+    public ResponseEntity<ReservaSala> criar(@RequestBody @Valid ReservaSalaDTO dto) {
+        String email = getEmailLogado();
+        return ResponseEntity.ok(service.criar(dto, email));
+    }
+
+    @GetMapping("/{salaId}/ocupados")
+    public ResponseEntity<List<LocalDateTime>> horariosOcupados(
+            @PathVariable Long salaId,
+            @RequestParam String data) {
+        return ResponseEntity.ok(service.horariosOcupados(salaId, LocalDateTime.parse(data + "T00:00:00")));
     }
 
     @PostMapping("/{id}/checkin")
-    public ResponseEntity<ReservaSala> checkin(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.checkin(id, userDetails.getUsername()));
+    public ResponseEntity<ReservaSala> checkin(@PathVariable Long id) {
+        return ResponseEntity.ok(service.checkin(id, getEmailLogado()));
     }
 
     @PostMapping("/{id}/checkout")
-    public ResponseEntity<ReservaSala> checkout(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.checkout(id, userDetails.getUsername()));
+    public ResponseEntity<ReservaSala> checkout(@PathVariable Long id) {
+        return ResponseEntity.ok(service.checkout(id, getEmailLogado()));
     }
 
     @PostMapping("/{id}/cancelar")
-    public ResponseEntity<ReservaSala> cancelar(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.cancelar(id, userDetails.getUsername()));
+    public ResponseEntity<ReservaSala> cancelar(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cancelar(id, getEmailLogado()));
     }
 
     @GetMapping("/minhas")
-    public ResponseEntity<List<ReservaSala>> minhasReservas(
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        // Busca o ID do usuário logado via email — o service já tem esse método
-        return ResponseEntity.ok(service.listarPorEmailUsuario(userDetails.getUsername()));
+    public ResponseEntity<List<ReservaSala>> minhasReservas() {
+        return ResponseEntity.ok(service.listarPorEmailUsuario(getEmailLogado()));
     }
-
-    // ─── Endpoints exclusivos de Admin ───────────────────────────────────────
 
     @GetMapping
     @Admin
@@ -84,5 +74,15 @@ public class ReservaSalaController {
     public ResponseEntity<Void> processarAutoCheckout() {
         service.processarAutoCheckout();
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/cancelar-admin")
+    @Admin
+    public ResponseEntity<ReservaSala> cancelarComoAdmin(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cancelarComoAdmin(id));
+    }
+
+    private String getEmailLogado() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }

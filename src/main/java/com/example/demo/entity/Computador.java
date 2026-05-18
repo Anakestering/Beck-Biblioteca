@@ -16,4 +16,7 @@ public class Computador extends BaseEntity {
 
     @Column(name = "capacidade_pessoas", nullable = false)
     private int capacidadePessoas = 2;
+
+    @Column(name = "observacao", columnDefinition = "TEXT")
+    private String observacao;
 }

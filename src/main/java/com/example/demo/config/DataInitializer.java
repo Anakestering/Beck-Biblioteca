@@ -19,9 +19,9 @@ public class DataInitializer {
     }
 
     @Bean
-    public CommandLineRunner initDatabase(UsuarioRepository repository){
+    public CommandLineRunner initDatabase(UsuarioRepository repository) {
         return args -> {
-            if(repository.count() <= 0){
+            if (repository.count() <= 0) {
                 Usuario usuario = new Usuario();
 
                 usuario.setNome("Administrador");
@@ -31,24 +31,22 @@ public class DataInitializer {
                 usuario.setSenha(passwordEncoder.encode("111111"));
 
                 repository.save(usuario);
-            
-                 // cria usuário padrão 
-    Usuario padrao = new Usuario();
-    padrao.setNome("UsuarioPadrao");
-    padrao.setCpf("22222222222");
-    padrao.setEmail("user@user.com");
-    padrao.setNivelAcesso(NivelAcesso.PADRAO);
-    padrao.setSenha(passwordEncoder.encode("222222"));
-    repository.save(padrao);
 
+                // cria usuário padrão
+                Usuario padrao = new Usuario();
+                padrao.setNome("UsuarioPadrao");
+                padrao.setCpf("22222222222");
+                padrao.setEmail("user@user.com");
+                padrao.setNivelAcesso(NivelAcesso.PADRAO);
+                padrao.setSenha(passwordEncoder.encode("222222"));
+                repository.save(padrao);
 
                 System.out.println("Usuário ADMIN criado com sucesso: 111.111.111-11 / 111111");
-            }else{
+            } else {
                 System.out.println("Usuário ADMIN e PADRAO já existe no banco!");
             }
 
-            
         };
-}
+    }
 
 }

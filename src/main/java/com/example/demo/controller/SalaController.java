@@ -25,6 +25,12 @@ public class SalaController {
         return ResponseEntity.ok(service.listar());
     }
 
+    @GetMapping("/todas")
+    @Admin
+    public ResponseEntity<List<SalaDTO>> listarTodas() {
+        return ResponseEntity.ok(service.listarTodas());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<SalaDTO> buscar(@PathVariable Long id) {
         return ResponseEntity.ok(service.buscar(id));
@@ -40,6 +46,20 @@ public class SalaController {
     @Admin
     public ResponseEntity<SalaDTO> atualizar(@PathVariable Long id, @RequestBody @Valid SalaDTO dto) {
         return ResponseEntity.ok(service.atualizar(id, dto));
+    }
+
+    @PatchMapping("/{id}/ativar")
+    @Admin
+    public ResponseEntity<Void> ativar(@PathVariable Long id) {
+        service.ativar(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/desativar")
+    @Admin
+    public ResponseEntity<Void> desativar(@PathVariable Long id) {
+        service.desativar(id);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

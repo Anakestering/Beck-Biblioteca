@@ -14,12 +14,8 @@ import java.time.LocalDateTime;
 public class AprovacaoReserva extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reserva_sala_id", unique = true)
-    private ReservaSala reservaSala;
-
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reserva_computador_id", unique = true)   // era reserva_pc_id
-    private ReservaComputador reservaComputador;
+    @JoinColumn(name = "pedido_id", unique = true)
+    private PedidoReserva pedido;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

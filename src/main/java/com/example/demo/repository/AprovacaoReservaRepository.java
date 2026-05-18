@@ -11,14 +11,12 @@ import java.util.Optional;
 @Repository
 public interface AprovacaoReservaRepository extends BaseRepository<AprovacaoReserva, Long> {
 
-    Optional<AprovacaoReserva> findByReservaSalaId(Long reservaSalaId);
-
-    Optional<AprovacaoReserva> findByReservaComputadorId(Long reservaComputadorId);
+    Optional<AprovacaoReserva> findByPedidoId(Long pedidoId);
 
     @Query("""
-        SELECT a FROM AprovacaoReserva a
-        WHERE a.status = :status
-          AND a.ativo = TRUE
-    """)
+                SELECT a FROM AprovacaoReserva a
+                WHERE a.status = :status
+                  AND a.ativo = TRUE
+            """)
     List<AprovacaoReserva> findByStatus(StatusAprovacao status);
 }

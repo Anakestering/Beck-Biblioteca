@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.entity.AprovacaoReserva;
+import com.example.demo.entity.PedidoReserva;
 import com.example.demo.entity.Usuario;
 import com.example.demo.enums.StatusAprovacao;
 import com.example.demo.enums.StatusReserva;
@@ -28,45 +29,42 @@ public class AprovacaoReservaService {
     }
 
     @Transactional
-    public AprovacaoReserva aprovar(Long id, String motivo, String emailAdmin) {
-        AprovacaoReserva aprovacao = buscar(id);
-        Usuario admin = usuarioRepo.findByEmail(emailAdmin)
-                .orElseThrow(() -> new RuntimeException("Admin não encontrado."));
+public AprovacaoReserva aprovar(Long id, String motivo, String emailAdmin) {
+    AprovacaoReserva aprovacao = buscar(id);
+    Usuario admin = usuarioRepo.findByEmail(emailAdmin)
+            .orElseThrow(() -> new RuntimeException("Admin não encontrado."));
 
-        aprovacao.setStatus(StatusAprovacao.APROVADA);
-        aprovacao.setDecididaEm(LocalDateTime.now());
-        aprovacao.setDecididaPorUsuario(admin);
-        aprovacao.setMotivo(motivo);
+    aprovacao.setStatus(StatusAprovacao.APROVADA);
+    aprovacao.setDecididaEm(LocalDateTime.now());
+    aprovacao.setDecididaPorUsuario(admin);
+    aprovacao.setMotivo(motivo);
 
-        // Atualiza o status da reserva vinculada
-        if (aprovacao.getReservaSala() != null) {
-            aprovacao.getReservaSala().setStatus(StatusReserva.APROVADA);
-        } else if (aprovacao.getReservaComputador() != null) {
-            aprovacao.getReservaComputador().setStatus(StatusReserva.APROVADA);
-        }
+    PedidoReserva pedido = aprovacao.getPedido();
+    pedido.setStatus(StatusReserva.APROVADA);
+    pedido.getReservasComputador().forEach(r -> r.setStatus(StatusReserva.APROVADA));
+    pedido.getReservasSala().forEach(r -> r.setStatus(StatusReserva.APROVADA));
 
-        return repo.save(aprovacao);
-    }
+    return repo.save(aprovacao);
+}
 
-    @Transactional
-    public AprovacaoReserva rejeitar(Long id, String motivo, String emailAdmin) {
-        AprovacaoReserva aprovacao = buscar(id);
-        Usuario admin = usuarioRepo.findByEmail(emailAdmin)
-                .orElseThrow(() -> new RuntimeException("Admin não encontrado."));
+@Transactional
+public AprovacaoReserva rejeitar(Long id, String motivo, String emailAdmin) {
+    AprovacaoReserva aprovacao = buscar(id);
+    Usuario admin = usuarioRepo.findByEmail(emailAdmin)
+            .orElseThrow(() -> new RuntimeException("Admin não encontrado."));
 
-        aprovacao.setStatus(StatusAprovacao.REJEITADA);
-        aprovacao.setDecididaEm(LocalDateTime.now());
-        aprovacao.setDecididaPorUsuario(admin);
-        aprovacao.setMotivo(motivo);
+    aprovacao.setStatus(StatusAprovacao.REJEITADA);
+    aprovacao.setDecididaEm(LocalDateTime.now());
+    aprovacao.setDecididaPorUsuario(admin);
+    aprovacao.setMotivo(motivo);
 
-        if (aprovacao.getReservaSala() != null) {
-            aprovacao.getReservaSala().setStatus(StatusReserva.REJEITADA);
-        } else if (aprovacao.getReservaComputador() != null) {
-            aprovacao.getReservaComputador().setStatus(StatusReserva.REJEITADA);
-        }
+    PedidoReserva pedido = aprovacao.getPedido();
+    pedido.setStatus(StatusReserva.REJEITADA);
+    pedido.getReservasComputador().forEach(r -> r.setStatus(StatusReserva.REJEITADA));
+    pedido.getReservasSala().forEach(r -> r.setStatus(StatusReserva.REJEITADA));
 
-        return repo.save(aprovacao);
-    }
+    return repo.save(aprovacao);
+}
 
     private AprovacaoReserva buscar(Long id) {
         return repo.findById(id)

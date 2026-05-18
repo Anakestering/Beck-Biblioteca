@@ -15,5 +15,5 @@ public class Sala extends BaseEntity {
     private String nome;
 
     @Column(name = "capacidade_pessoas", nullable = false)
-    private int capacidadePessoas = 5;
+    private int capacidadePessoas;
 }

@@ -6,10 +6,10 @@ import com.example.demo.entity.ReservaComputador;
 import com.example.demo.service.ReservaComputadorService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -24,51 +24,30 @@ public class ReservaComputadorController {
     }
 
     @PostMapping
-    public ResponseEntity<ReservaComputador> criar(
-            @RequestBody @Valid ReservaComputadorDTO dto,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        ReservaComputador reserva = service.criar(dto, userDetails.getUsername());
-        return ResponseEntity.ok(reserva);
+    public ResponseEntity<ReservaComputador> criar(@RequestBody @Valid ReservaComputadorDTO dto) {
+        return ResponseEntity.ok(service.criar(dto, getEmailLogado()));
+    }
+
+    @GetMapping("/{computadorId}/ocupados")
+    public ResponseEntity<List<LocalDateTime>> horariosOcupados(
+            @PathVariable Long computadorId,
+            @RequestParam String data) {
+        return ResponseEntity.ok(service.horariosOcupados(computadorId, LocalDateTime.parse(data + "T00:00:00")));
     }
 
     @PostMapping("/{id}/checkin")
-    public ResponseEntity<ReservaComputador> checkin(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.checkin(id, userDetails.getUsername()));
+    public ResponseEntity<ReservaComputador> checkin(@PathVariable Long id) {
+        return ResponseEntity.ok(service.checkin(id, getEmailLogado()));
     }
 
     @PostMapping("/{id}/checkout")
-    public ResponseEntity<ReservaComputador> checkout(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.checkout(id, userDetails.getUsername()));
+    public ResponseEntity<ReservaComputador> checkout(@PathVariable Long id) {
+        return ResponseEntity.ok(service.checkout(id, getEmailLogado()));
     }
 
     @PostMapping("/{id}/cancelar")
-    public ResponseEntity<ReservaComputador> cancelar(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.cancelar(id, userDetails.getUsername()));
-    }
-
-    @GetMapping("/minhas")
-    public ResponseEntity<List<ReservaComputador>> minhasReservas(
-            @AuthenticationPrincipal UserDetails userDetails
-    ) {
-        return ResponseEntity.ok(service.listarPorEmailUsuario(userDetails.getUsername()));
-    }
-
-    // ─── Endpoints exclusivos de Admin ───────────────────────────────────────
-
-    @GetMapping
-    @Admin
-    public ResponseEntity<List<ReservaComputador>> listarTodas() {
-        return ResponseEntity.ok(service.listarTodas());
+    public ResponseEntity<ReservaComputador> cancelar(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cancelar(id, getEmailLogado()));
     }
 
     @PostMapping("/admin/processar-atrasados")
@@ -83,5 +62,15 @@ public class ReservaComputadorController {
     public ResponseEntity<Void> processarAutoCheckout() {
         service.processarAutoCheckout();
         return ResponseEntity.noContent().build();
+    }
+
+    private String getEmailLogado() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
+    }
+
+    @PostMapping("/{id}/cancelar-admin")
+    @Admin
+    public ResponseEntity<ReservaComputador> cancelarComoAdmin(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cancelarComoAdmin(id));
     }
 }

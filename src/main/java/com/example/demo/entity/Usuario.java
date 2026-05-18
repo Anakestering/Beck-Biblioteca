@@ -4,7 +4,6 @@ import com.example.demo.enums.NivelAcesso;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -31,12 +30,12 @@ public class Usuario extends BaseEntity {
     @Column(name = "senha", nullable = false)
     private String senha;
 
+    @Column(name = "telefone")
+    private String telefone;
+
     @Column(name = "nivel_acesso", nullable = false)
     private NivelAcesso nivelAcesso = NivelAcesso.PADRAO;
 
-    @PrePersist
-    public void prePersist() {
-        this.nivelAcesso = NivelAcesso.PADRAO;
-    } 
+
 
 }

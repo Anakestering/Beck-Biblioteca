@@ -14,91 +14,121 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
 
     // Verifica sobreposição de horário para o mesmo computador
     @Query("""
-        SELECT r FROM ReservaComputador r
-        WHERE r.computador.id = :computadorId
-          AND r.status IN :statusBloqueadores
-          AND r.inicioPrevisto < :fim
-          AND r.fimPrevisto > :inicio
-          AND r.ativo = TRUE
-    """)
+                SELECT r FROM ReservaComputador r
+                WHERE r.computador.id = :computadorId
+                  AND r.status IN :statusBloqueadores
+                  AND r.inicioPrevisto < :fim
+                  AND r.fimPrevisto > :inicio
+                  AND r.ativo = TRUE
+            """)
     List<ReservaComputador> findSobrepostas(
             Long computadorId,
             LocalDateTime inicio,
             LocalDateTime fim,
-            List<StatusReserva> statusBloqueadores
-    );
+            List<StatusReserva> statusBloqueadores);
 
-    // Conta quantos PCs diferentes o usuário já reservou neste mesmo intervalo de horário
+    // Conta quantos PCs diferentes o usuário já reservou neste mesmo intervalo de
+    // horário
     @Query("""
-        SELECT COUNT(DISTINCT r.computador.id) FROM ReservaComputador r
-        WHERE r.usuario.id = :usuarioId
-          AND r.status IN :statusBloqueadores
-          AND r.inicioPrevisto < :fim
-          AND r.fimPrevisto > :inicio
-          AND r.ativo = TRUE
-    """)
+                SELECT COUNT(DISTINCT r.computador.id) FROM ReservaComputador r
+                WHERE r.usuario.id = :usuarioId
+                  AND r.status IN :statusBloqueadores
+                  AND r.inicioPrevisto < :fim
+                  AND r.fimPrevisto > :inicio
+                  AND r.ativo = TRUE
+            """)
     int countPcsDoUsuarioNoHorario(
             Long usuarioId,
             LocalDateTime inicio,
             LocalDateTime fim,
-            List<StatusReserva> statusBloqueadores
-    );
+            List<StatusReserva> statusBloqueadores);
 
-    // Busca reserva do usuário neste computador que termina exatamente em fimPrevisto (consecutivos para trás)
+    // Busca reserva do usuário neste computador que termina exatamente em
+    // fimPrevisto (consecutivos para trás)
     @Query("""
-        SELECT r FROM ReservaComputador r
-        WHERE r.usuario.id = :usuarioId
-          AND r.computador.id = :computadorId
-          AND r.fimPrevisto = :fimPrevisto
-          AND r.status IN :statusBloqueadores
-          AND r.ativo = TRUE
-    """)
+                SELECT r FROM ReservaComputador r
+                WHERE r.usuario.id = :usuarioId
+                  AND r.computador.id = :computadorId
+                  AND r.fimPrevisto = :fimPrevisto
+                  AND r.status IN :statusBloqueadores
+                  AND r.ativo = TRUE
+            """)
     Optional<ReservaComputador> findByUsuarioIdEComputadorIdEFimPrevisto(
             Long usuarioId,
             Long computadorId,
             LocalDateTime fimPrevisto,
-            List<StatusReserva> statusBloqueadores
-    );
+            List<StatusReserva> statusBloqueadores);
 
-    // Busca reserva do usuário neste computador que começa exatamente em inicioPrevisto (consecutivos para frente)
+    // Busca reserva do usuário neste computador que começa exatamente em
+    // inicioPrevisto (consecutivos para frente)
     @Query("""
-        SELECT r FROM ReservaComputador r
-        WHERE r.usuario.id = :usuarioId
-          AND r.computador.id = :computadorId
-          AND r.inicioPrevisto = :inicioPrevisto
-          AND r.status IN :statusBloqueadores
-          AND r.ativo = TRUE
-    """)
+                SELECT r FROM ReservaComputador r
+                WHERE r.usuario.id = :usuarioId
+                  AND r.computador.id = :computadorId
+                  AND r.inicioPrevisto = :inicioPrevisto
+                  AND r.status IN :statusBloqueadores
+                  AND r.ativo = TRUE
+            """)
     Optional<ReservaComputador> findByUsuarioIdEComputadorIdEInicioPrevisto(
             Long usuarioId,
             Long computadorId,
             LocalDateTime inicioPrevisto,
-            List<StatusReserva> statusBloqueadores
-    );
+            List<StatusReserva> statusBloqueadores);
+
 
     @Query("""
-        SELECT r FROM ReservaComputador r
-        WHERE r.usuario.id = :usuarioId
-          AND r.ativo = TRUE
-        ORDER BY r.inicioPrevisto DESC
-    """)
+                SELECT r FROM ReservaComputador r
+                LEFT JOIN FETCH r.computador
+                LEFT JOIN FETCH r.usuario
+                LEFT JOIN FETCH r.criadaPorUsuario
+                LEFT JOIN FETCH r.pedido p
+                LEFT JOIN FETCH p.usuario
+                LEFT JOIN FETCH p.reservasComputador pc
+                LEFT JOIN FETCH pc.computador
+                WHERE r.ativo = TRUE
+                ORDER BY r.inicioPrevisto DESC
+            """)
+    List<ReservaComputador> findAll();
+
+    @Query("""
+                SELECT r FROM ReservaComputador r
+                LEFT JOIN FETCH r.computador
+                LEFT JOIN FETCH r.usuario
+                LEFT JOIN FETCH r.criadaPorUsuario
+                LEFT JOIN FETCH r.pedido p
+                LEFT JOIN FETCH p.usuario
+                LEFT JOIN FETCH p.reservasComputador pc
+                LEFT JOIN FETCH pc.computador
+                WHERE r.usuario.id = :usuarioId
+                  AND r.ativo = TRUE
+                ORDER BY r.inicioPrevisto DESC
+            """)
     List<ReservaComputador> findByUsuarioId(Long usuarioId);
 
     @Query("""
-        SELECT r FROM ReservaComputador r
-        WHERE r.status = 'EM_ANDAMENTO'
-          AND r.fimPrevisto <= :agora
-          AND r.checkoutEm IS NULL
-          AND r.ativo = TRUE
-    """)
+                SELECT r FROM ReservaComputador r
+                WHERE r.status = 'EM_ANDAMENTO'
+                  AND r.fimPrevisto <= :agora
+                  AND r.checkoutEm IS NULL
+                  AND r.ativo = TRUE
+            """)
     List<ReservaComputador> findParaAutoCheckout(LocalDateTime agora);
 
     @Query("""
-        SELECT r FROM ReservaComputador r
-        WHERE r.status = 'APROVADA'
-          AND r.inicioPrevisto <= :limite
-          AND r.checkinEm IS NULL
-          AND r.ativo = TRUE
-    """)
+                SELECT r FROM ReservaComputador r
+                WHERE r.status = 'APROVADA'
+                  AND r.inicioPrevisto <= :limite
+                  AND r.checkinEm IS NULL
+                  AND r.ativo = TRUE
+            """)
     List<ReservaComputador> findParaAtrasado(LocalDateTime limite);
+
+    @Query("""
+                SELECT r.inicioPrevisto, r.fimPrevisto FROM ReservaComputador r
+                WHERE r.computador.id = :computadorId
+                  AND CAST(r.inicioPrevisto AS date) = CAST(:data AS date)
+                  AND r.status IN ('APROVADA', 'PENDENTE_APROVACAO', 'EM_ANDAMENTO')
+                  AND r.ativo = TRUE
+            """)
+    List<Object[]> findHorariosOcupados(Long computadorId, LocalDateTime data);
 }

@@ -20,10 +20,8 @@ public class ReservaComputadorDTO {
     private Long usuarioId;
 
     @NotNull(message = "O início da reserva deve ser informado.")
-    @Future(message = "O início deve ser uma data futura.")
     private LocalDateTime inicioPrevisto;
 
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime fimPrevisto;
 
     @Min(value = 1, message = "Mínimo de 1 pessoa.")

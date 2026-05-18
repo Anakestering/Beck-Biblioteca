@@ -1,6 +1,8 @@
 package com.example.demo.entity;
 
 import com.example.demo.enums.StatusReserva;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -12,6 +14,11 @@ import java.time.LocalDateTime;
 @Table(name = "reserva_computador")
 @EqualsAndHashCode(callSuper = false)
 public class ReservaComputador extends BaseEntity {
+
+    @JsonIgnoreProperties({ "reservasComputador", "reservasSala", "usuario", "criadaPorUsuario" })
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pedido_id")
+    private PedidoReserva pedido;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "computador_id", nullable = false)
@@ -44,7 +51,7 @@ public class ReservaComputador extends BaseEntity {
     @Column(name = "cancelada_em")
     private LocalDateTime canceladaEm;
 
-    @Column(name = "atrasado_em")       
+    @Column(name = "atrasado_em")
     private LocalDateTime atrasadoEm;
 
     @Column(name = "checkin_em")
