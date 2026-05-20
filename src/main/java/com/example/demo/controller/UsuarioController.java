@@ -2,9 +2,12 @@ package com.example.demo.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
 
 import com.example.demo.annotations.Public;
 import com.example.demo.dto.UsuarioDTO;
+import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
 import com.example.demo.service.UsuarioService;
 
@@ -33,8 +36,19 @@ public class UsuarioController extends BaseController<UsuarioDTO> {
 
     @PutMapping("/{id}/ativar")
     public ResponseEntity<Void> ativar(@PathVariable Long id) {
-        usuarioService.ativar(id); 
+        usuarioService.ativar(id);
+
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<UsuarioStatsDTO> stats() {
+        return ResponseEntity.ok(usuarioService.buscarStats());
+    }
+
+    @GetMapping("/buscar")
+    public ResponseEntity<List<UsuarioDTO>> buscar(@RequestParam String termo) {
+        return ResponseEntity.ok(usuarioService.buscar(termo));
     }
 
 }

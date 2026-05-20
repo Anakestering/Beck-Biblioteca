@@ -4,6 +4,8 @@ import com.example.demo.enums.NivelAcesso;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -33,9 +35,8 @@ public class Usuario extends BaseEntity {
     @Column(name = "telefone")
     private String telefone;
 
-    @Column(name = "nivel_acesso", nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private NivelAcesso nivelAcesso = NivelAcesso.PADRAO;
-
-
 
 }

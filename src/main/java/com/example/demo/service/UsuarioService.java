@@ -1,5 +1,8 @@
 package com.example.demo.service;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,7 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.demo.dto.UsuarioDTO;
+import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
+import com.example.demo.enums.NivelAcesso;
 import com.example.demo.repository.UsuarioRepository;
 
 @Service
@@ -36,7 +41,10 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         }
 
         usuario.setSenha(encoder.encode(usuario.getSenha()));
-        usuario.setAtivo(true); 
+        usuario.setAtivo(true);
+
+        // nível padrão
+        usuario.setNivelAcesso(NivelAcesso.PADRAO);
 
         repo.save(usuario);
     }
@@ -83,8 +91,29 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         usuario.setAtivo(true);
-        usuario.setDeletedAt(null); 
+        usuario.setDeletedAt(null);
 
         repo.save(usuario);
+    }
+
+    // usuarios criados na semana e o total
+    public UsuarioStatsDTO buscarStats() {
+        LocalDateTime inicioDaSemana = LocalDate.now()
+                .with(DayOfWeek.MONDAY)
+                .atStartOfDay();
+
+        long total = repo.count();
+        long ativos = repo.countByAtivo(true);
+        long semana = repo.countByCreatedAtGreaterThanEqual(inicioDaSemana);
+
+        return new UsuarioStatsDTO(total, ativos, semana);
+    }
+
+    // UsuarioService
+    public List<UsuarioDTO> buscar(String termo) {
+        return repo.buscarPorTermo(termo)
+                .stream()
+                .map(this::toDto)
+                .toList();
     }
 }
