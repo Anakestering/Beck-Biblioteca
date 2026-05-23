@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -153,38 +154,18 @@ public class PedidoReservaService {
         Usuario usuario = usuarioRepo.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
 
-        List<PedidoReserva> comComputadores = pedidoRepo.findByUsuarioIdComComputadores(usuario.getId());
-        List<PedidoReserva> comSalas = pedidoRepo.findByUsuarioIdComSalas(usuario.getId());
+        List<PedidoReserva> resultado = mesclarPedidos(
+                pedidoRepo.findByUsuarioIdComComputadores(usuario.getId()),
+                pedidoRepo.findByUsuarioIdComSalas(usuario.getId()));
 
-        // Mescla salas nos pedidos já carregados com computadores
-        comSalas.forEach(ps -> comComputadores.stream()
-                .filter(pc -> pc.getId().equals(ps.getId()))
-                .findFirst()
-                .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala())));
-
-        // Adiciona pedidos que são só de sala (sem computadores)
-        comSalas.stream()
-                .filter(ps -> comComputadores.stream().noneMatch(pc -> pc.getId().equals(ps.getId())))
-                .forEach(comComputadores::add);
-
-        comComputadores.sort((a, b) -> b.getInicioPrevisto().compareTo(a.getInicioPrevisto()));
-        return comComputadores;
+        resultado.sort((a, b) -> b.getInicioPrevisto().compareTo(a.getInicioPrevisto()));
+        return resultado;
     }
 
     public List<PedidoReserva> listarTodos() {
-        List<PedidoReserva> comComputadores = pedidoRepo.findTodosComComputadores();
-        List<PedidoReserva> comSalas = pedidoRepo.findTodosComSalas();
-
-        comSalas.forEach(ps -> comComputadores.stream()
-                .filter(pc -> pc.getId().equals(ps.getId()))
-                .findFirst()
-                .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala())));
-
-        comSalas.stream()
-                .filter(ps -> comComputadores.stream().noneMatch(pc -> pc.getId().equals(ps.getId())))
-                .forEach(comComputadores::add);
-
-        return comComputadores;
+        return mesclarPedidos(
+                pedidoRepo.findTodosComComputadores(),
+                pedidoRepo.findTodosComSalas());
     }
 
     @Transactional
@@ -340,5 +321,38 @@ public class PedidoReservaService {
     private void validarDono(String emailDono, String emailLogado) {
         if (!emailDono.equals(emailLogado))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você não tem permissão para alterar este pedido.");
+    }
+
+    public List<PedidoReserva> listarTodosFiltrado(LocalDate data, StatusReserva status, String busca) { 
+                                                                                                         
+        LocalDateTime dataInicio = data != null ? data.atStartOfDay() : null;
+        LocalDateTime dataFim = data != null ? data.plusDays(1).atStartOfDay() : null;
+
+        return mesclarPedidos(
+                pedidoRepo.findTodosFiltradoComComputadores(status, dataInicio, dataFim, busca),
+                pedidoRepo.findTodosFiltradoComSalas(status, dataInicio, dataFim, busca));
+    }
+
+    public List<PedidoReserva> listarTodosFiltradoPeriodo(LocalDate dataInicio, LocalDate dataFim, StatusReserva status,
+            String busca) { 
+        LocalDateTime inicio = dataInicio != null ? dataInicio.atStartOfDay() : null;
+        LocalDateTime fim = dataFim != null ? dataFim.plusDays(1).atStartOfDay() : null;
+
+        return mesclarPedidos(
+                pedidoRepo.findTodosFiltradoComComputadores(status, inicio, fim, busca),
+                pedidoRepo.findTodosFiltradoComSalas(status, inicio, fim, busca));
+    }
+
+    private List<PedidoReserva> mesclarPedidos(List<PedidoReserva> comComputadores, List<PedidoReserva> comSalas) {
+        comSalas.forEach(ps -> comComputadores.stream()
+                .filter(pc -> pc.getId().equals(ps.getId()))
+                .findFirst()
+                .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala())));
+
+        comSalas.stream()
+                .filter(ps -> comComputadores.stream().noneMatch(pc -> pc.getId().equals(ps.getId())))
+                .forEach(comComputadores::add);
+
+        return comComputadores;
     }
 }

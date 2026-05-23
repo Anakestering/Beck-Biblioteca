@@ -122,6 +122,8 @@ public class ResponseMapper {
                                         java.util.LinkedHashMap::new),
                                 m -> new java.util.ArrayList<>(m.values()))));
 
+        dto.calcularJanelaCheckin();
+
         return dto;
     }
 

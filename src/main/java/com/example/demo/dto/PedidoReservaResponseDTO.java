@@ -23,4 +23,18 @@ public class PedidoReservaResponseDTO {
     private String observacao;
     private List<ReservaComputadorResponseDTO> reservasComputador;
     private List<ReservaSalaResponseDTO> reservasSala;
+    private boolean naJanelaCheckin;
+
+    // ───  MÉTODO DE CONVENIÊNCIA ──────────────────────────
+    public void calcularJanelaCheckin() {
+        if (this.status != StatusReserva.APROVADA) {
+            this.naJanelaCheckin = false;
+            return;
+        }
+        LocalDateTime agora = LocalDateTime.now();
+        LocalDateTime janelaInicio = this.inicioPrevisto.minusMinutes(5);
+        LocalDateTime janelaFim = this.inicioPrevisto.plusMinutes(15);
+
+        this.naJanelaCheckin = !agora.isBefore(janelaInicio) && !agora.isAfter(janelaFim);
+    }
 }
