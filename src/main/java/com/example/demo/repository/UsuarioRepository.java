@@ -39,8 +39,7 @@ public interface UsuarioRepository extends BaseRepository<Usuario, Long> {
 
     @Query("""
                 SELECT u FROM Usuario u
-                WHERE u.ativo = true
-                AND u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
                 AND (
                     LOWER(u.nome)  LIKE LOWER(CONCAT('%', :termo, '%')) OR
                     LOWER(u.email) LIKE LOWER(CONCAT('%', :termo, '%')) OR
