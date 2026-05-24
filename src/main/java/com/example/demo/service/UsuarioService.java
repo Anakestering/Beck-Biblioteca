@@ -41,24 +41,25 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
     private PasswordEncoder passwordEncoder;
 
     // Cadastro de novo usuário
-    public void cadastrar(Usuario usuario) {
-
-        if (repo.existsByEmail(usuario.getEmail())) {
-            throw new RuntimeException("Email já existe");
-        }
-
-        if (repo.existsByCpf(usuario.getCpf())) {
-            throw new RuntimeException("CPF já existe");
-        }
-
-        usuario.setSenha(passwordEncoder.encode(usuario.getSenha()));
-        usuario.setAtivo(true);
-
-        // nível padrão
-        usuario.setNivelAcesso(NivelAcesso.PADRAO);
-
-        repo.save(usuario);
+    public void cadastrar(UsuarioDTO dto) {
+    if (repo.existsByEmail(dto.getEmail())) {
+        throw new RuntimeException("Email já existe");
     }
+    if (repo.existsByCpf(dto.getCpf())) {
+        throw new RuntimeException("CPF já existe");
+    }
+
+    Usuario usuario = new Usuario();
+    usuario.setNome(dto.getNome());
+    usuario.setCpf(dto.getCpf());
+    usuario.setEmail(dto.getEmail());
+    usuario.setTelefone(dto.getTelefone());
+    usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
+    usuario.setAtivo(true);
+    usuario.setNivelAcesso(NivelAcesso.PADRAO);
+
+    repo.save(usuario);
+}
 
     @Override
     public List<UsuarioDTO> read() {

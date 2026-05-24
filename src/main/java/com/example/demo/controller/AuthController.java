@@ -3,6 +3,7 @@ package com.example.demo.controller;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -40,24 +41,47 @@ public class AuthController {
     @Autowired
     private UsuarioService usuarioService;
 
+    private final Map<String, long[]> tentativasLogin = new ConcurrentHashMap<>();
+
+    private boolean podeLogin(String email) {
+        long agora = System.currentTimeMillis();
+        long janela = 15 * 60 * 1000L;
+        int limite = 5;
+
+        tentativasLogin.compute(email, (k, registro) -> {
+            if (registro == null) return new long[]{ agora, 1 };
+            if ((agora - registro[0]) >= janela) return new long[]{ agora, 1 };
+            registro[1]++;
+            return registro;
+        });
+
+        return tentativasLogin.get(email)[1] <= limite;
+    }
+
     @PostMapping("/login")
     @Public
     public ResponseEntity<?> login(@RequestBody @Valid AuthDTO dto) {
         String email = dto.getEmail();
         String senha = dto.getSenha();
 
+        if (!podeLogin(email)) {
+            return ResponseEntity.status(429).body(
+                Map.of("message", "Muitas tentativas. Tente novamente em 15 minutos."));
+        }
+
         Optional<Usuario> usuarioOpt = usuarioRepository.findByEmail(email);
 
         if (usuarioOpt.isPresent() && passwordEncoder.matches(senha, usuarioOpt.get().getSenha())) {
-            String nivelAcesso = usuarioOpt.get().getNivelAcesso().toString();
+            tentativasLogin.remove(email);
 
+            String nivelAcesso = usuarioOpt.get().getNivelAcesso().toString();
             String token = jwtUtil.generateToken(email, nivelAcesso);
 
-            return ResponseEntity.ok(Map.of(
-                    "token", token, "tipo", nivelAcesso));
+            return ResponseEntity.ok(Map.of("token", token, "tipo", nivelAcesso));
         }
 
-        return ResponseEntity.status(401).body("Credenciais Inválidas!");
+        return ResponseEntity.status(401).body(
+            Map.of("message", "Credenciais inválidas."));
     }
 
     @Public
@@ -85,7 +109,5 @@ public class AuthController {
 
         return ResponseEntity.ok(
                 Map.of("message", "Senha alterada com sucesso!"));
-
     }
-
 }

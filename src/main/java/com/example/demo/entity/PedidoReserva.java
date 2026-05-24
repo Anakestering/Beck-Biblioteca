@@ -48,9 +48,11 @@ public class PedidoReserva extends BaseEntity {
 
     @JsonIgnoreProperties({ "pedido" })
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("id ASC")
     private List<ReservaComputador> reservasComputador = new ArrayList<>();
 
     @JsonIgnoreProperties({ "pedido" })
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OrderBy("id ASC")
     private List<ReservaSala> reservasSala = new ArrayList<>();
 }

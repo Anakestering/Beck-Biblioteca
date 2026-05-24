@@ -14,7 +14,6 @@ import com.example.demo.annotations.Public;
 import com.example.demo.dto.TrocarSenhaDTO;
 import com.example.demo.dto.UsuarioDTO;
 import com.example.demo.dto.UsuarioStatsDTO;
-import com.example.demo.entity.Usuario;
 import com.example.demo.service.UsuarioService;
 
 import jakarta.validation.Valid;
@@ -35,10 +34,8 @@ public class UsuarioController extends BaseController<UsuarioDTO> {
 
     @PostMapping("/cadastro")
     @Public
-    public ResponseEntity<?> cadastrar(
-            @RequestBody Usuario usuario) {
-        usuarioService.cadastrar(usuario);
-
+    public ResponseEntity<?> cadastrar(@RequestBody @Valid UsuarioDTO dto) {
+        usuarioService.cadastrar(dto);
         return ResponseEntity.ok("Cadastrado");
     }
 

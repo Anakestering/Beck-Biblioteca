@@ -146,33 +146,23 @@ public class PedidoReservaService {
         }
 
         pedidoRepo.flush();
-        PedidoReserva comComputadores = pedidoRepo.findByIdComComputadores(pedido.getId()).orElseThrow();
-        PedidoReserva comSalas = pedidoRepo.findByIdComSalas(pedido.getId()).orElse(null);
-
-        if (comSalas != null) {
-            comComputadores.getReservasSala().addAll(comSalas.getReservasSala());
-        }
-
-        return comComputadores;
+        return findByIdMesclado(pedido.getId());
     }
 
     public List<PedidoReserva> listarPorEmailUsuario(String email) {
         Usuario usuario = usuarioRepo.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
 
-        // Busca separada para evitar MultipleBagFetchException
         List<PedidoReserva> comComputadores = pedidoRepo.findByUsuarioIdComComputadores(usuario.getId());
         List<PedidoReserva> comSalas = pedidoRepo.findByUsuarioIdComSalas(usuario.getId());
 
-        // Mescla as listas de salas nos pedidos já carregados
-        comSalas.forEach(ps -> {
-            comComputadores.stream()
-                    .filter(pc -> pc.getId().equals(ps.getId()))
-                    .findFirst()
-                    .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala()));
-        });
+        // Mescla salas nos pedidos já carregados com computadores
+        comSalas.forEach(ps -> comComputadores.stream()
+                .filter(pc -> pc.getId().equals(ps.getId()))
+                .findFirst()
+                .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala())));
 
-        // Inclui pedidos de sala que não têm computador
+        // Adiciona pedidos que são só de sala (sem computadores)
         comSalas.stream()
                 .filter(ps -> comComputadores.stream().noneMatch(pc -> pc.getId().equals(ps.getId())))
                 .forEach(comComputadores::add);
@@ -185,12 +175,10 @@ public class PedidoReservaService {
         List<PedidoReserva> comComputadores = pedidoRepo.findTodosComComputadores();
         List<PedidoReserva> comSalas = pedidoRepo.findTodosComSalas();
 
-        comSalas.forEach(ps -> {
-            comComputadores.stream()
-                    .filter(pc -> pc.getId().equals(ps.getId()))
-                    .findFirst()
-                    .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala()));
-        });
+        comSalas.forEach(ps -> comComputadores.stream()
+                .filter(pc -> pc.getId().equals(ps.getId()))
+                .findFirst()
+                .ifPresent(pc -> pc.getReservasSala().addAll(ps.getReservasSala())));
 
         comSalas.stream()
                 .filter(ps -> comComputadores.stream().noneMatch(pc -> pc.getId().equals(ps.getId())))
@@ -201,11 +189,7 @@ public class PedidoReservaService {
 
     @Transactional
     public PedidoReserva cancelarComoAdmin(Long pedidoId) {
-        PedidoReserva pedido = pedidoRepo.findByIdComComputadores(pedidoId)
-                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
-
-        // busca salas separado
-        PedidoReserva comSalas = pedidoRepo.findByIdComSalas(pedidoId).orElse(null);
+        PedidoReserva pedido = findByIdMesclado(pedidoId);
 
         LocalDateTime agora = LocalDateTime.now();
 
@@ -214,17 +198,16 @@ public class PedidoReservaService {
                     .contains(r.getStatus())) {
                 r.setStatus(StatusReserva.CANCELADA);
                 r.setCanceladaEm(agora);
+                reservaComputadorRepo.save(r);
             }
         }
 
-        if (comSalas != null) {
-            for (ReservaSala r : comSalas.getReservasSala()) {
-                if (!List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
-                        .contains(r.getStatus())) {
-                    r.setStatus(StatusReserva.CANCELADA);
-                    r.setCanceladaEm(agora);
-                    reservaSalaRepo.save(r);
-                }
+        for (ReservaSala r : pedido.getReservasSala()) {
+            if (!List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
+                    .contains(r.getStatus())) {
+                r.setStatus(StatusReserva.CANCELADA);
+                r.setCanceladaEm(agora);
+                reservaSalaRepo.save(r);
             }
         }
 
@@ -232,13 +215,11 @@ public class PedidoReservaService {
         pedidoRepo.save(pedido);
 
         return pedido;
-
     }
 
     @Transactional
     public PedidoReserva checkin(Long pedidoId, String emailLogado) {
-        PedidoReserva pedido = pedidoRepo.findByIdComComputadores(pedidoId)
-                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
+        PedidoReserva pedido = findByIdMesclado(pedidoId);
 
         validarDono(pedido.getUsuario().getEmail(), emailLogado);
 
@@ -259,15 +240,11 @@ public class PedidoReservaService {
             }
         }
 
-        // busca as salas separado pra evitar MultipleBagFetchException
-        PedidoReserva comSalas = pedidoRepo.findByIdComSalas(pedidoId).orElse(null);
-        if (comSalas != null) {
-            for (ReservaSala r : comSalas.getReservasSala()) {
-                if (r.getStatus() == StatusReserva.APROVADA) {
-                    r.setCheckinEm(agora);
-                    r.setStatus(StatusReserva.EM_ANDAMENTO);
-                    reservaSalaRepo.save(r);
-                }
+        for (ReservaSala r : pedido.getReservasSala()) {
+            if (r.getStatus() == StatusReserva.APROVADA) {
+                r.setCheckinEm(agora);
+                r.setStatus(StatusReserva.EM_ANDAMENTO);
+                reservaSalaRepo.save(r);
             }
         }
 
@@ -279,8 +256,7 @@ public class PedidoReservaService {
 
     @Transactional
     public PedidoReserva checkout(Long pedidoId, String emailLogado) {
-        PedidoReserva pedido = pedidoRepo.findByIdComComputadores(pedidoId)
-                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
+        PedidoReserva pedido = findByIdMesclado(pedidoId);
 
         validarDono(pedido.getUsuario().getEmail(), emailLogado);
 
@@ -299,19 +275,16 @@ public class PedidoReservaService {
             }
         }
 
-        PedidoReserva comSalas = pedidoRepo.findByIdComSalas(pedidoId).orElse(null);
-        if (comSalas != null) {
-            for (ReservaSala r : comSalas.getReservasSala()) {
-                if (r.getStatus() == StatusReserva.EM_ANDAMENTO) {
-                    r.setCheckoutEm(agora);
-                    r.setStatus(StatusReserva.FINALIZADA);
-                    r.setCheckoutAutomatico(false);
-                    reservaSalaRepo.save(r);
-                } else if (r.getStatus() == StatusReserva.APROVADA) {
-                    r.setStatus(StatusReserva.CANCELADA);
-                    r.setCanceladaEm(agora);
-                    reservaSalaRepo.save(r);
-                }
+        for (ReservaSala r : pedido.getReservasSala()) {
+            if (r.getStatus() == StatusReserva.EM_ANDAMENTO) {
+                r.setCheckoutEm(agora);
+                r.setStatus(StatusReserva.FINALIZADA);
+                r.setCheckoutAutomatico(false);
+                reservaSalaRepo.save(r);
+            } else if (r.getStatus() == StatusReserva.APROVADA) {
+                r.setStatus(StatusReserva.CANCELADA);
+                r.setCanceladaEm(agora);
+                reservaSalaRepo.save(r);
             }
         }
 
@@ -323,8 +296,7 @@ public class PedidoReservaService {
 
     @Transactional
     public PedidoReserva cancelar(Long pedidoId, String emailLogado) {
-        PedidoReserva pedido = pedidoRepo.findByIdComComputadores(pedidoId)
-                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
+        PedidoReserva pedido = findByIdMesclado(pedidoId);
 
         validarDono(pedido.getUsuario().getEmail(), emailLogado);
 
@@ -342,15 +314,12 @@ public class PedidoReservaService {
             }
         }
 
-        PedidoReserva comSalas = pedidoRepo.findByIdComSalas(pedidoId).orElse(null);
-        if (comSalas != null) {
-            for (ReservaSala r : comSalas.getReservasSala()) {
-                if (!List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
-                        .contains(r.getStatus())) {
-                    r.setStatus(StatusReserva.CANCELADA);
-                    r.setCanceladaEm(agora);
-                    reservaSalaRepo.save(r);
-                }
+        for (ReservaSala r : pedido.getReservasSala()) {
+            if (!List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
+                    .contains(r.getStatus())) {
+                r.setStatus(StatusReserva.CANCELADA);
+                r.setCanceladaEm(agora);
+                reservaSalaRepo.save(r);
             }
         }
 
@@ -358,6 +327,14 @@ public class PedidoReservaService {
         pedidoRepo.save(pedido);
 
         return pedido;
+    }
+
+    private PedidoReserva findByIdMesclado(Long id) {
+        PedidoReserva comPcs = pedidoRepo.findByIdComComputadores(id)
+                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
+        pedidoRepo.findByIdComSalas(id)
+                .ifPresent(comSalas -> comPcs.getReservasSala().addAll(comSalas.getReservasSala()));
+        return comPcs;
     }
 
     private void validarDono(String emailDono, String emailLogado) {
