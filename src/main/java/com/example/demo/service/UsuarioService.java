@@ -33,7 +33,8 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
     @Autowired
     private PasswordEncoder encoder;
 
-    @Autowired EmailService emailService;
+    @Autowired
+    EmailService emailService;
 
     // Cadastro de novo usuário
     public void cadastrar(Usuario usuario) {
@@ -123,11 +124,8 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 .toList();
     }
 
-
-
-
     @Transactional
-    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto){
+    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto) {
 
         String email = dto.getEmail();
         Usuario usuario = repo.findByEmail(email).orElseThrow();
@@ -140,13 +138,12 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         repo.save(usuario);
 
         try {
-        emailService.enviarEmail(
-            email, 
-            "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
-            "SEU CÓDIGO É: " + codigo);
+            emailService.enviarEmail(
+                    email,
+                    "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
+                    "SEU CÓDIGO É: " + codigo);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Poxa vida, deu ruim no email :(");
         }
     }
-
 }
