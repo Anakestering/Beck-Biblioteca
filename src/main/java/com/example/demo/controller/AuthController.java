@@ -37,7 +37,7 @@ public class AuthController {
     private JwtUtil jwtUtil;
 
     @Autowired
-    private UsuarioService UsuarioService;
+    private UsuarioService usuarioService;
 
     @PostMapping("/login")
     @Public
@@ -65,13 +65,16 @@ public class AuthController {
     @Public
     @PostMapping("/recuperar-senha/solicitar")
     public ResponseEntity<?> solicitarCodigo(@RequestBody @Valid RecuperacaoSolicitacaoDTO dto){
-        UsuarioService.solicitarCodigo(dto);
+        usuarioService.solicitarCodigo(dto);
         return ResponseEntity.ok(Map.of("message", "E-mail enviado com sucesso!"));
     }
 
     @Public
     @PostMapping("/recuperar-senha/alterar")
     public ResponseEntity<?> alterarSenha(@RequestBody @Valid RecuperarSenhaDTO dto){
+
+        usuarioService.alterarSenha(dto);
+
 
         return ResponseEntity.ok(
             Map.of("message", "Senha alterada com sucesso!"));

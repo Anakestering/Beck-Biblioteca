@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.example.demo.dto.RecuperacaoSolicitacaoDTO;
+import com.example.demo.dto.RecuperarSenhaDTO;
 import com.example.demo.dto.UsuarioDTO;
 import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
@@ -33,7 +34,11 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
     @Autowired
     private PasswordEncoder encoder;
 
-    @Autowired EmailService emailService;
+    @Autowired
+    EmailService emailService;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     // Cadastro de novo usuário
     public void cadastrar(Usuario usuario) {
@@ -123,11 +128,8 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 .toList();
     }
 
-
-
-
     @Transactional
-    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto){
+    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto) {
 
         String email = dto.getEmail();
         Usuario usuario = repo.findByEmail(email).orElseThrow();
@@ -140,13 +142,41 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         repo.save(usuario);
 
         try {
-        emailService.enviarEmail(
-            email, 
-            "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
-            "SEU CÓDIGO É: " + codigo);
+            emailService.enviarEmail(
+                    email,
+                    "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
+                    "SEU CÓDIGO É: " + codigo);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Poxa vida, deu ruim no email :(");
         }
     }
 
+    @Transactional
+    public void alterarSenha(RecuperarSenhaDTO dto){
+        String email = dto.getEmail();
+        String codigo = dto.getCodigo();
+        String novaSenha = dto.getNovaSenha();
+
+        Usuario usuario = repo.findByEmail(email).orElseThrow();
+
+        if(usuario.getCodigoRecuperacao() == null || usuario.getCodigoRecuperacaoExpiracao() == null){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nenhuma solicitação de recuperação foi feita.");
+        }
+
+        if(!usuario.getCodigoRecuperacao().equals(codigo)){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
+        }
+
+        if(usuario.getCodigoRecuperacaoExpiracao().isBefore(LocalDateTime.now())){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
+        }
+
+        String novaSenhaCriptografada = passwordEncoder.encode(novaSenha); 
+        usuario.setSenha(novaSenhaCriptografada);
+
+        usuario.setCodigoRecuperacao(null);
+        usuario.setCodigoRecuperacaoExpiracao(null);
+
+        repo.save(usuario);
+    }
 }
