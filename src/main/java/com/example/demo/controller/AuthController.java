@@ -15,8 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.demo.annotations.Public;
 import com.example.demo.config.JwtUtil;
 import com.example.demo.dto.AuthDTO;
+import com.example.demo.dto.RecuperacaoSolicitacaoDTO;
+import com.example.demo.dto.RecuperarSenhaDTO;
 import com.example.demo.entity.Usuario;
 import com.example.demo.repository.UsuarioRepository;
+import com.example.demo.service.UsuarioService;
 
 import jakarta.validation.Valid;
 
@@ -32,6 +35,9 @@ public class AuthController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private UsuarioService UsuarioService;
 
     @PostMapping("/login")
     @Public
@@ -54,8 +60,21 @@ public class AuthController {
         return ResponseEntity.status(401).body("Credenciais Inválidas!");
     }
 
-    @GetMapping("/ping")    
-    public void pong(){
+
+
+    @Public
+    @PostMapping("/recuperar-senha/solicitar")
+    public ResponseEntity<?> solicitarCodigo(@RequestBody @Valid RecuperacaoSolicitacaoDTO dto){
+        UsuarioService.solicitarCodigo(dto);
+        return ResponseEntity.ok(Map.of("message", "E-mail enviado com sucesso!"));
+    }
+
+    @Public
+    @PostMapping("/recuperar-senha/alterar")
+    public ResponseEntity<?> alterarSenha(@RequestBody @Valid RecuperarSenhaDTO dto){
+
+        return ResponseEntity.ok(
+            Map.of("message", "Senha alterada com sucesso!"));
 
     }
 

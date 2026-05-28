@@ -4,12 +4,16 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Random;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import com.example.demo.dto.RecuperacaoSolicitacaoDTO;
 import com.example.demo.dto.UsuarioDTO;
 import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
@@ -28,6 +32,8 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
 
     @Autowired
     private PasswordEncoder encoder;
+
+    @Autowired EmailService emailService;
 
     // Cadastro de novo usuário
     public void cadastrar(Usuario usuario) {
@@ -116,4 +122,31 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 .map(this::toDto)
                 .toList();
     }
+
+
+
+
+    @Transactional
+    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto){
+
+        String email = dto.getEmail();
+        Usuario usuario = repo.findByEmail(email).orElseThrow();
+
+        String codigo = String.valueOf(10000000 + new Random().nextInt(90000000));
+
+        usuario.setCodigoRecuperacao(codigo);
+        usuario.setCodigoRecuperacaoExpiracao(LocalDateTime.now().plusMinutes(20));
+
+        repo.save(usuario);
+
+        try {
+        emailService.enviarEmail(
+            email, 
+            "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
+            "SEU CÓDIGO É: " + codigo);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Poxa vida, deu ruim no email :(");
+        }
+    }
+
 }
