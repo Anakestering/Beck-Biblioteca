@@ -17,11 +17,10 @@ public class RecuperarSenhaDTO {
     private String email;
 
     @NotBlank
-    @Size(min = 8, max = 8)
     private String codigo;
 
     @NotBlank
-    @Size(min = 8, max = 18)
+    @Size(min = 8, max = 18, message = "A senha deve ter no mínimo 8 caracteres.")
     private String novaSenha;
     
 }

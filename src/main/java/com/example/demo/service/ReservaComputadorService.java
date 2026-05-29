@@ -27,14 +27,17 @@ public class ReservaComputadorService {
     private final ReservaComputadorRepository reservaRepo;
     private final ComputadorRepository computadorRepo;
     private final UsuarioRepository usuarioRepo;
+    private final PedidoReservaRepository pedidoRepo;
 
     public ReservaComputadorService(
             ReservaComputadorRepository reservaRepo,
             ComputadorRepository computadorRepo,
-            UsuarioRepository usuarioRepo) {
+            UsuarioRepository usuarioRepo,
+            PedidoReservaRepository pedidoRepo) {
         this.reservaRepo = reservaRepo;
         this.computadorRepo = computadorRepo;
         this.usuarioRepo = usuarioRepo;
+        this.pedidoRepo = pedidoRepo;
     }
 
     // ─── Criar ────────────────────────────────────────────────────────────────
@@ -59,7 +62,7 @@ public class ReservaComputadorService {
 
         if (dto.getQtdePessoas() > computador.getCapacidadePessoas()) {
             throw new RuntimeException(
-                    "Quantidade de pessoas excede a capacidade do computador (" 
+                    "Quantidade de pessoas excede a capacidade do computador ("
                     + computador.getCapacidadePessoas() + ").");
         }
 
@@ -79,9 +82,8 @@ public class ReservaComputadorService {
 
         return reservaRepo.save(reserva);
     }
+
     // ─── Check-in ─────────────────────────────────────────────────────────────
-    // Faz checkin no bloco atual e em todos os blocos consecutivos seguintes
-    // do mesmo usuário neste PC
 
     @Transactional
     public ReservaComputador checkin(Long reservaId, String emailUsuarioLogado) {
@@ -109,8 +111,7 @@ public class ReservaComputadorService {
         reserva.setStatus(StatusReserva.EM_ANDAMENTO);
         reservaRepo.save(reserva);
 
-        // Propaga checkin para todos os blocos consecutivos seguintes (mesmo usuário,
-        // mesmo PC)
+        // Propaga checkin para todos os blocos consecutivos seguintes
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaComputador> proximo = reservaRepo
@@ -119,8 +120,7 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaComputador r = proximo.get();
             r.setCheckinEm(agora);
             r.setStatus(StatusReserva.EM_ANDAMENTO);
@@ -128,11 +128,13 @@ public class ReservaComputadorService {
             cursor = r.getFimPrevisto();
         }
 
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.EM_ANDAMENTO);
+
         return reserva;
     }
 
     // ─── Check-out ────────────────────────────────────────────────────────────
-    // Finaliza o bloco atual e cancela todos os blocos seguintes ainda
 
     @Transactional
     public ReservaComputador checkout(Long reservaId, String emailUsuarioLogado) {
@@ -151,7 +153,7 @@ public class ReservaComputadorService {
         reserva.setCheckoutAutomatico(false);
         reservaRepo.save(reserva);
 
-        // Cancela blocos seguintes EM_ANDAMENTO 
+        // Cancela blocos seguintes EM_ANDAMENTO
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaComputador> proximo = reservaRepo
@@ -160,8 +162,7 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.EM_ANDAMENTO));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaComputador r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -169,11 +170,13 @@ public class ReservaComputadorService {
             cursor = r.getFimPrevisto();
         }
 
+        // Atualiza status do pedido pai para FINALIZADA
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.FINALIZADA);
+
         return reserva;
     }
 
     // ─── Cancelar ─────────────────────────────────────────────────────────────
-    // Cancela o bloco atual e todos os consecutivos seguintes do mesmo grupo.
 
     @Transactional
     public ReservaComputador cancelar(Long reservaId, String emailUsuarioLogado) {
@@ -191,12 +194,10 @@ public class ReservaComputadorService {
 
         LocalDateTime agora = LocalDateTime.now();
 
-        // Cancela o bloco atual
         reserva.setStatus(StatusReserva.CANCELADA);
         reserva.setCanceladaEm(agora);
         reservaRepo.save(reserva);
 
-        // Cancela todos os blocos consecutivos seguintes do mesmo grupo
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaComputador> proximo = reservaRepo
@@ -205,14 +206,16 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaComputador r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
             reservaRepo.save(r);
             cursor = r.getFimPrevisto();
         }
+
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.CANCELADA);
 
         return reserva;
     }
@@ -231,7 +234,6 @@ public class ReservaComputadorService {
         reserva.setCanceladaEm(agora);
         reservaRepo.save(reserva);
 
-        // Cancela consecutivos
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaComputador> proximo = reservaRepo
@@ -240,14 +242,15 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaComputador r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
             reservaRepo.save(r);
             cursor = r.getFimPrevisto();
         }
+
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.CANCELADA);
 
         return reserva;
     }
@@ -261,6 +264,7 @@ public class ReservaComputadorService {
             r.setCheckoutAutomatico(true);
             r.setStatus(StatusReserva.FINALIZADA);
             reservaRepo.save(r);
+            atualizarStatusPedido(r.getPedido(), StatusReserva.FINALIZADA);
         });
     }
 
@@ -271,26 +275,26 @@ public class ReservaComputadorService {
             r.setStatus(StatusReserva.ATRASADO);
             r.setAtrasadoEm(LocalDateTime.now());
             reservaRepo.save(r);
+            atualizarStatusPedido(r.getPedido(), StatusReserva.ATRASADO);
         });
     }
 
     // ─── Listagens ────────────────────────────────────────────────────────────
 
     public List<LocalDateTime> horariosOcupados(Long computadorId, LocalDateTime data) {
-    List<Object[]> reservas = reservaRepo.findHorariosOcupados(computadorId, data);
-    List<LocalDateTime> blocos = new ArrayList<>();
-
-    for (Object[] row : reservas) {
-        LocalDateTime inicio = (LocalDateTime) row[0];
-        LocalDateTime fim    = (LocalDateTime) row[1];
-        LocalDateTime cursor = inicio;
-        while (cursor.isBefore(fim)) {
-            blocos.add(cursor);
-            cursor = cursor.plusMinutes(DURACAO_MINUTOS);
+        List<Object[]> reservas = reservaRepo.findHorariosOcupados(computadorId, data);
+        List<LocalDateTime> blocos = new ArrayList<>();
+        for (Object[] row : reservas) {
+            LocalDateTime inicio = (LocalDateTime) row[0];
+            LocalDateTime fim    = (LocalDateTime) row[1];
+            LocalDateTime cursor = inicio;
+            while (cursor.isBefore(fim)) {
+                blocos.add(cursor);
+                cursor = cursor.plusMinutes(DURACAO_MINUTOS);
+            }
         }
+        return blocos;
     }
-    return blocos;
-}
 
     // ─── Helpers privados ─────────────────────────────────────────────────────
 
@@ -306,4 +310,13 @@ public class ReservaComputadorService {
         }
     }
 
+    /**
+     * Atualiza o status do PedidoReserva pai, se existir.
+     * Null-safe: ignora silenciosamente se o pedido não estiver vinculado.
+     */
+    private void atualizarStatusPedido(PedidoReserva pedido, StatusReserva novoStatus) {
+        if (pedido == null) return;
+        pedido.setStatus(novoStatus);
+        pedidoRepo.save(pedido);
+    }
 }

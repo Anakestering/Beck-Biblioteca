@@ -36,21 +36,6 @@ public class ReservaSalaController {
         return ResponseEntity.ok(service.horariosOcupados(salaId, LocalDateTime.parse(data + "T00:00:00")));
     }
 
-    @PostMapping("/{id}/checkin")
-    public ResponseEntity<ReservaSala> checkin(@PathVariable Long id) {
-        return ResponseEntity.ok(service.checkin(id, getEmailLogado()));
-    }
-
-    @PostMapping("/{id}/checkout")
-    public ResponseEntity<ReservaSala> checkout(@PathVariable Long id) {
-        return ResponseEntity.ok(service.checkout(id, getEmailLogado()));
-    }
-
-    @PostMapping("/{id}/cancelar")
-    public ResponseEntity<ReservaSala> cancelar(@PathVariable Long id) {
-        return ResponseEntity.ok(service.cancelar(id, getEmailLogado()));
-    }
-
     @GetMapping("/minhas")
     public ResponseEntity<List<ReservaSala>> minhasReservas() {
         return ResponseEntity.ok(service.listarPorEmailUsuario(getEmailLogado()));

@@ -27,59 +27,60 @@ public class ReservaSalaService {
     private final ReservaSalaRepository reservaRepo;
     private final SalaRepository salaRepo;
     private final UsuarioRepository usuarioRepo;
+    private final PedidoReservaRepository pedidoRepo;
 
     public ReservaSalaService(
-        ReservaSalaRepository reservaRepo,
-        SalaRepository salaRepo,
-        UsuarioRepository usuarioRepo) {  
-    this.reservaRepo = reservaRepo;
-    this.salaRepo = salaRepo;
-    this.usuarioRepo = usuarioRepo;
-}
+            ReservaSalaRepository reservaRepo,
+            SalaRepository salaRepo,
+            UsuarioRepository usuarioRepo,
+            PedidoReservaRepository pedidoRepo) {
+        this.reservaRepo = reservaRepo;
+        this.salaRepo = salaRepo;
+        this.usuarioRepo = usuarioRepo;
+        this.pedidoRepo = pedidoRepo;
+    }
 
     // ─── Criar ────────────────────────────────────────────────────────────────
 
     @Transactional
-public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
-    Sala sala = salaRepo.findById(dto.getSalaId())
-            .orElseThrow(() -> new RuntimeException("Sala não encontrada."));
+    public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
+        Sala sala = salaRepo.findById(dto.getSalaId())
+                .orElseThrow(() -> new RuntimeException("Sala não encontrada."));
 
-    Usuario usuarioLogado = usuarioRepo.findByEmail(emailUsuarioLogado)
-            .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
+        Usuario usuarioLogado = usuarioRepo.findByEmail(emailUsuarioLogado)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
 
-    Usuario dono = (dto.getUsuarioId() != null)
-            ? usuarioRepo.findById(dto.getUsuarioId())
-                    .orElseThrow(() -> new RuntimeException("Usuário não encontrado."))
-            : usuarioLogado;
+        Usuario dono = (dto.getUsuarioId() != null)
+                ? usuarioRepo.findById(dto.getUsuarioId())
+                        .orElseThrow(() -> new RuntimeException("Usuário não encontrado."))
+                : usuarioLogado;
 
-    LocalDateTime inicio = dto.getInicioPrevisto();
-    LocalDateTime fim = inicio.plusMinutes(DURACAO_MINUTOS);
+        LocalDateTime inicio = dto.getInicioPrevisto();
+        LocalDateTime fim = inicio.plusMinutes(DURACAO_MINUTOS);
 
-    if (dto.getQtdePessoas() > sala.getCapacidadePessoas()) {
-        throw new RuntimeException(
-                "Quantidade de pessoas excede a capacidade da sala (" + sala.getCapacidadePessoas() + ").");
+        if (dto.getQtdePessoas() > sala.getCapacidadePessoas()) {
+            throw new RuntimeException(
+                    "Quantidade de pessoas excede a capacidade da sala (" + sala.getCapacidadePessoas() + ").");
+        }
+
+        if (!reservaRepo.findSobrepostas(sala.getId(), inicio, fim, STATUS_BLOQUEADORES).isEmpty()) {
+            throw new RuntimeException("Já existe uma reserva para esta sala neste horário.");
+        }
+
+        ReservaSala reserva = new ReservaSala();
+        reserva.setSala(sala);
+        reserva.setUsuario(dono);
+        reserva.setCriadaPorUsuario(usuarioLogado);
+        reserva.setInicioPrevisto(inicio);
+        reserva.setFimPrevisto(fim);
+        reserva.setQtdePessoas(dto.getQtdePessoas());
+        reserva.setObservacao(dto.getObservacao());
+        reserva.setStatus(StatusReserva.APROVADA);
+
+        return reservaRepo.save(reserva);
     }
-
-    if (!reservaRepo.findSobrepostas(sala.getId(), inicio, fim, STATUS_BLOQUEADORES).isEmpty()) {
-        throw new RuntimeException("Já existe uma reserva para esta sala neste horário.");
-    }
-
-    ReservaSala reserva = new ReservaSala();
-    reserva.setSala(sala);
-    reserva.setUsuario(dono);
-    reserva.setCriadaPorUsuario(usuarioLogado);
-    reserva.setInicioPrevisto(inicio);
-    reserva.setFimPrevisto(fim);
-    reserva.setQtdePessoas(dto.getQtdePessoas());
-    reserva.setObservacao(dto.getObservacao());
-    reserva.setStatus(StatusReserva.APROVADA);
-
-    return reservaRepo.save(reserva);
-}
 
     // ─── Check-in ─────────────────────────────────────────────────────────────
-    // Faz checkin no bloco atual e em todos os blocos consecutivos seguintes
-    // do mesmo usuário nesta sala
 
     @Transactional
     public ReservaSala checkin(Long reservaId, String emailUsuarioLogado) {
@@ -107,8 +108,7 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
         reserva.setStatus(StatusReserva.EM_ANDAMENTO);
         reservaRepo.save(reserva);
 
-        // Propaga checkin para todos os blocos consecutivos seguintes (mesmo usuário,
-        // mesma sala)
+        // Propaga checkin para todos os blocos consecutivos seguintes
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaSala> proximo = reservaRepo
@@ -117,8 +117,7 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaSala r = proximo.get();
             r.setCheckinEm(agora);
             r.setStatus(StatusReserva.EM_ANDAMENTO);
@@ -126,11 +125,13 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
             cursor = r.getFimPrevisto();
         }
 
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.EM_ANDAMENTO);
+
         return reserva;
     }
 
     // ─── Check-out ────────────────────────────────────────────────────────────
-    // Finaliza o bloco atual e cancela todos os blocos seguintes 
 
     @Transactional
     public ReservaSala checkout(Long reservaId, String emailUsuarioLogado) {
@@ -143,13 +144,12 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
 
         LocalDateTime agora = LocalDateTime.now();
 
-        // Finaliza o bloco atual
         reserva.setCheckoutEm(agora);
         reserva.setStatus(StatusReserva.FINALIZADA);
         reserva.setCheckoutAutomatico(false);
         reservaRepo.save(reserva);
 
-        // Cancela blocos seguintes EM_ANDAMENTO 
+        // Cancela blocos seguintes EM_ANDAMENTO
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaSala> proximo = reservaRepo
@@ -158,8 +158,7 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.EM_ANDAMENTO));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaSala r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -167,11 +166,13 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
             cursor = r.getFimPrevisto();
         }
 
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.FINALIZADA);
+
         return reserva;
     }
 
     // ─── Cancelar ─────────────────────────────────────────────────────────────
-    // Cancela o bloco atual e todos os consecutivos seguintes do mesmo grupo.
 
     @Transactional
     public ReservaSala cancelar(Long reservaId, String emailUsuarioLogado) {
@@ -189,12 +190,10 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
 
         LocalDateTime agora = LocalDateTime.now();
 
-        // Cancela o bloco atual
         reserva.setStatus(StatusReserva.CANCELADA);
         reserva.setCanceladaEm(agora);
         reservaRepo.save(reserva);
 
-        // Cancela todos os blocos consecutivos seguintes do mesmo grupo
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaSala> proximo = reservaRepo
@@ -203,8 +202,7 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty())
-                break;
+            if (proximo.isEmpty()) break;
             ReservaSala r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -212,42 +210,46 @@ public ReservaSala criar(ReservaSalaDTO dto, String emailUsuarioLogado) {
             cursor = r.getFimPrevisto();
         }
 
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.CANCELADA);
+
         return reserva;
     }
 
     @Transactional
-public ReservaSala cancelarComoAdmin(Long reservaId) {
-    ReservaSala reserva = buscarAtiva(reservaId);
+    public ReservaSala cancelarComoAdmin(Long reservaId) {
+        ReservaSala reserva = buscarAtiva(reservaId);
 
-    if (List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
-            .contains(reserva.getStatus())) {
-        throw new RuntimeException("Esta reserva já foi encerrada.");
+        if (List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
+                .contains(reserva.getStatus())) {
+            throw new RuntimeException("Esta reserva já foi encerrada.");
+        }
+
+        LocalDateTime agora = LocalDateTime.now();
+        reserva.setStatus(StatusReserva.CANCELADA);
+        reserva.setCanceladaEm(agora);
+        reservaRepo.save(reserva);
+
+        LocalDateTime cursor = reserva.getFimPrevisto();
+        while (true) {
+            Optional<ReservaSala> proximo = reservaRepo
+                    .findByUsuarioIdESalaIdEInicioPrevisto(
+                            reserva.getUsuario().getId(),
+                            reserva.getSala().getId(),
+                            cursor,
+                            List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
+            if (proximo.isEmpty()) break;
+            ReservaSala r = proximo.get();
+            r.setStatus(StatusReserva.CANCELADA);
+            r.setCanceladaEm(agora);
+            reservaRepo.save(r);
+            cursor = r.getFimPrevisto();
+        }
+
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.CANCELADA);
+
+        return reserva;
     }
-
-    LocalDateTime agora = LocalDateTime.now();
-    reserva.setStatus(StatusReserva.CANCELADA);
-    reserva.setCanceladaEm(agora);
-    reservaRepo.save(reserva);
-
-    LocalDateTime cursor = reserva.getFimPrevisto();
-    while (true) {
-        Optional<ReservaSala> proximo = reservaRepo
-            .findByUsuarioIdESalaIdEInicioPrevisto(
-                reserva.getUsuario().getId(),
-                reserva.getSala().getId(),
-                cursor,
-                List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO)
-            );
-        if (proximo.isEmpty()) break;
-        ReservaSala r = proximo.get();
-        r.setStatus(StatusReserva.CANCELADA);
-        r.setCanceladaEm(agora);
-        reservaRepo.save(r);
-        cursor = r.getFimPrevisto();
-    }
-
-    return reserva;
-}
 
     // ─── Jobs automáticos ─────────────────────────────────────────────────────
 
@@ -258,6 +260,7 @@ public ReservaSala cancelarComoAdmin(Long reservaId) {
             r.setCheckoutAutomatico(true);
             r.setStatus(StatusReserva.FINALIZADA);
             reservaRepo.save(r);
+            atualizarStatusPedido(r.getPedido(), StatusReserva.FINALIZADA);
         });
     }
 
@@ -268,6 +271,7 @@ public ReservaSala cancelarComoAdmin(Long reservaId) {
             r.setStatus(StatusReserva.ATRASADO);
             r.setAtrasadoEm(LocalDateTime.now());
             reservaRepo.save(r);
+            atualizarStatusPedido(r.getPedido(), StatusReserva.ATRASADO);
         });
     }
 
@@ -284,18 +288,18 @@ public ReservaSala cancelarComoAdmin(Long reservaId) {
     }
 
     public List<LocalDateTime> horariosOcupados(Long salaId, LocalDateTime data) {
-    List<Object[]> reservas = reservaRepo.findHorariosOcupados(salaId, data);
-    List<LocalDateTime> blocos = new ArrayList<>();
-    for (Object[] row : reservas) {
-        LocalDateTime cursor = (LocalDateTime) row[0];
-        LocalDateTime fim    = (LocalDateTime) row[1];
-        while (cursor.isBefore(fim)) {
-            blocos.add(cursor);
-            cursor = cursor.plusMinutes(DURACAO_MINUTOS);
+        List<Object[]> reservas = reservaRepo.findHorariosOcupados(salaId, data);
+        List<LocalDateTime> blocos = new ArrayList<>();
+        for (Object[] row : reservas) {
+            LocalDateTime cursor = (LocalDateTime) row[0];
+            LocalDateTime fim    = (LocalDateTime) row[1];
+            while (cursor.isBefore(fim)) {
+                blocos.add(cursor);
+                cursor = cursor.plusMinutes(DURACAO_MINUTOS);
+            }
         }
+        return blocos;
     }
-    return blocos;
-}
 
     // ─── Helpers privados ─────────────────────────────────────────────────────
 
@@ -311,4 +315,12 @@ public ReservaSala cancelarComoAdmin(Long reservaId) {
         }
     }
 
+    /**
+     * Atualiza o status do PedidoReserva pai, se existir.
+     */
+    private void atualizarStatusPedido(PedidoReserva pedido, StatusReserva novoStatus) {
+        if (pedido == null) return;
+        pedido.setStatus(novoStatus);
+        pedidoRepo.save(pedido);
+    }
 }

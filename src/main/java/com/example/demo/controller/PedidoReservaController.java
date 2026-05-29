@@ -42,10 +42,24 @@ public class PedidoReservaController {
     }
 
     @PostMapping("/{id}/cancelar-admin")
-@Admin
-public ResponseEntity<PedidoReserva> cancelarComoAdmin(@PathVariable Long id) {
-    return ResponseEntity.ok(service.cancelarComoAdmin(id));
-}
+    @Admin
+    public ResponseEntity<PedidoReserva> cancelarComoAdmin(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cancelarComoAdmin(id));
+    }
 
+    @PostMapping("/{id}/checkin")
+    public ResponseEntity<PedidoReserva> checkin(@PathVariable Long id) {
+        return ResponseEntity.ok(service.checkin(id, getEmailLogado()));
+    }
+
+    @PostMapping("/{id}/checkout")
+    public ResponseEntity<PedidoReserva> checkout(@PathVariable Long id) {
+        return ResponseEntity.ok(service.checkout(id, getEmailLogado()));
+    }
+
+    @PostMapping("/{id}/cancelar")
+    public ResponseEntity<PedidoReserva> cancelar(@PathVariable Long id) {
+        return ResponseEntity.ok(service.cancelar(id, getEmailLogado()));
+    }
 
 }

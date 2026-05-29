@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -14,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.example.demo.dto.RecuperacaoSolicitacaoDTO;
+import com.example.demo.dto.RecuperarSenhaDTO;
+import com.example.demo.dto.TrocarSenhaDTO;
 import com.example.demo.dto.UsuarioDTO;
 import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
@@ -31,10 +35,10 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
     private UsuarioRepository repo;
 
     @Autowired
-    private PasswordEncoder encoder;
+    EmailService emailService;
 
     @Autowired
-    EmailService emailService;
+    private PasswordEncoder passwordEncoder;
 
     // Cadastro de novo usuário
     public void cadastrar(Usuario usuario) {
@@ -47,7 +51,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
             throw new RuntimeException("CPF já existe");
         }
 
-        usuario.setSenha(encoder.encode(usuario.getSenha()));
+        usuario.setSenha(passwordEncoder.encode(usuario.getSenha()));
         usuario.setAtivo(true);
 
         // nível padrão
@@ -124,11 +128,52 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 .toList();
     }
 
+    // UsuarioService.java
+    public UsuarioDTO buscarPorEmail(String email) {
+        Usuario usuario = repo.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
+        return toDto(usuario);
+    }
+
+    private final Map<String, long[]> tentativas = new ConcurrentHashMap<>();
+
+    private boolean podeEnviar(String chave) {
+        long agora = System.currentTimeMillis();
+        long janela = 15 * 60 * 1000L;
+
+        tentativas.compute(chave, (k, registro) -> {
+            if (registro == null)
+                return new long[] { agora, 1 };
+            long tempoInicio = registro[0];
+            long contagem = registro[1];
+
+            if ((agora - tempoInicio) >= janela)
+                return new long[] { agora, 1 };
+            registro[1] = contagem + 1;
+            return registro;
+        });
+
+        long[] registro = tentativas.get(chave);
+        return registro[1] <= 5;
+    }
+
     @Transactional
-    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto) {
+    public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto, String ip) {
+
+        String chave = ip + ":" + dto.getEmail();
+
+        if (!podeEnviar(chave)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Muitas tentativas. Tente novamente mais tarde.");
+        }
 
         String email = dto.getEmail();
-        Usuario usuario = repo.findByEmail(email).orElseThrow();
+
+        Usuario usuario = repo.findByEmail(email).orElse(null);
+
+        if (usuario == null) {
+            return;
+        }
 
         String codigo = String.valueOf(10000000 + new Random().nextInt(90000000));
 
@@ -145,5 +190,58 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Poxa vida, deu ruim no email :(");
         }
+    }
+
+    @Transactional
+    public void alterarSenha(RecuperarSenhaDTO dto) {
+        String email = dto.getEmail();
+        String codigo = dto.getCodigo();
+        String novaSenha = dto.getNovaSenha();
+
+        Usuario usuario = repo.findByEmail(email).orElse(null);
+
+        if (usuario == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
+        }
+
+        // verifica se existe o codigo
+        if (usuario.getCodigoRecuperacao() == null || usuario.getCodigoRecuperacaoExpiracao() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nenhuma solicitação de recuperação foi feita.");
+        }
+
+        // verifica se o codigo enviado tem msm 8 caracteres, tirei do dto
+        if (codigo.length() != 8) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
+        }
+
+        // verifica se é igual
+        if (!usuario.getCodigoRecuperacao().equals(codigo)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
+        }
+
+        // verifica se esta expirado
+        if (usuario.getCodigoRecuperacaoExpiracao().isBefore(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
+        }
+
+        String novaSenhaCriptografada = passwordEncoder.encode(novaSenha);
+        usuario.setSenha(novaSenhaCriptografada);
+
+        usuario.setCodigoRecuperacao(null);
+        usuario.setCodigoRecuperacaoExpiracao(null);
+
+        repo.save(usuario);
+    }
+
+    public void trocarSenha(String email, TrocarSenhaDTO dto) {
+        Usuario usuario = repo.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
+
+        if (!passwordEncoder.matches(dto.getSenhaAtual(), usuario.getSenha())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Senha atual incorreta.");
+        }
+
+        usuario.setSenha(passwordEncoder.encode(dto.getNovaSenha()));
+        repo.save(usuario);
     }
 }

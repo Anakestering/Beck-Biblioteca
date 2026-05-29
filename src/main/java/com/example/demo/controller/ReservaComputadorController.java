@@ -35,21 +35,6 @@ public class ReservaComputadorController {
         return ResponseEntity.ok(service.horariosOcupados(computadorId, LocalDateTime.parse(data + "T00:00:00")));
     }
 
-    @PostMapping("/{id}/checkin")
-    public ResponseEntity<ReservaComputador> checkin(@PathVariable Long id) {
-        return ResponseEntity.ok(service.checkin(id, getEmailLogado()));
-    }
-
-    @PostMapping("/{id}/checkout")
-    public ResponseEntity<ReservaComputador> checkout(@PathVariable Long id) {
-        return ResponseEntity.ok(service.checkout(id, getEmailLogado()));
-    }
-
-    @PostMapping("/{id}/cancelar")
-    public ResponseEntity<ReservaComputador> cancelar(@PathVariable Long id) {
-        return ResponseEntity.ok(service.cancelar(id, getEmailLogado()));
-    }
-
     @PostMapping("/admin/processar-atrasados")
     @Admin
     public ResponseEntity<Void> processarAtrasados() {
