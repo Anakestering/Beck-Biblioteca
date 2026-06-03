@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.dto.PedidoReservaDTO;
 import com.example.demo.entity.*;
+import com.example.demo.enums.NivelAcesso;
 import com.example.demo.enums.StatusAprovacao;
 import com.example.demo.enums.StatusReserva;
 import com.example.demo.enums.TipoPedido;
@@ -78,7 +79,8 @@ public class PedidoReservaService {
                     || blocos > MAX_TEMPOS_SEM_APROVACAO;
         }
 
-        StatusReserva status = precisaAprovacao
+        boolean criadoPorAdmin = usuarioLogado.getNivelAcesso() == NivelAcesso.ADMIN;
+        StatusReserva status = (precisaAprovacao && !criadoPorAdmin)
                 ? StatusReserva.PENDENTE_APROVACAO
                 : StatusReserva.APROVADA;
 
@@ -138,7 +140,7 @@ public class PedidoReservaService {
             }
         }
 
-        if (precisaAprovacao) {
+        if (precisaAprovacao && !criadoPorAdmin) {
             AprovacaoReserva aprovacao = new AprovacaoReserva();
             aprovacao.setPedido(pedido);
             aprovacao.setStatus(StatusAprovacao.PENDENTE);
@@ -323,8 +325,8 @@ public class PedidoReservaService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você não tem permissão para alterar este pedido.");
     }
 
-    public List<PedidoReserva> listarTodosFiltrado(LocalDate data, StatusReserva status, String busca) { 
-                                                                                                         
+    public List<PedidoReserva> listarTodosFiltrado(LocalDate data, StatusReserva status, String busca) {
+
         LocalDateTime dataInicio = data != null ? data.atStartOfDay() : null;
         LocalDateTime dataFim = data != null ? data.plusDays(1).atStartOfDay() : null;
 
@@ -334,7 +336,7 @@ public class PedidoReservaService {
     }
 
     public List<PedidoReserva> listarTodosFiltradoPeriodo(LocalDate dataInicio, LocalDate dataFim, StatusReserva status,
-            String busca) { 
+            String busca) {
         LocalDateTime inicio = dataInicio != null ? dataInicio.atStartOfDay() : null;
         LocalDateTime fim = dataFim != null ? dataFim.plusDays(1).atStartOfDay() : null;
 

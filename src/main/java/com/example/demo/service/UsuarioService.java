@@ -189,7 +189,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                     "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
                     "SEU CÓDIGO É: " + codigo);
         } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Poxa vida, deu ruim no email :(");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Email não encontrado");
         }
     }
 
