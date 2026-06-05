@@ -18,6 +18,9 @@ public class ReservaComputadorService {
     private static final int DURACAO_MINUTOS = 45;
     private static final int CHECKIN_ANTECEDENCIA_MIN = 5;
     private static final int CHECKIN_TOLERANCIA_MIN = 15;
+    // ─── Constantes de funcionamento ──────────────────────────────────────────
+    private static final int HORA_ABERTURA = 7;
+    private static final int HORA_FECHAMENTO = 22;
 
     private static final List<StatusReserva> STATUS_BLOQUEADORES = List.of(
             StatusReserva.APROVADA,
@@ -60,10 +63,22 @@ public class ReservaComputadorService {
                 ? dto.getFimPrevisto()
                 : inicio.plusMinutes(DURACAO_MINUTOS);
 
+        // Valida dia da semana
+        java.time.DayOfWeek diaSemana = inicio.getDayOfWeek();
+        if (diaSemana == java.time.DayOfWeek.SATURDAY || diaSemana == java.time.DayOfWeek.SUNDAY) {
+            throw new RuntimeException("Reservas não são permitidas aos finais de semana.");
+        }
+
+        // Valida horário de funcionamento
+        if (inicio.getHour() < HORA_ABERTURA || fim.isAfter(inicio.toLocalDate().atTime(HORA_FECHAMENTO, 0))) {
+            throw new RuntimeException(
+                    "Reservas permitidas apenas entre " + HORA_ABERTURA + "h e " + HORA_FECHAMENTO + "h.");
+        }
+
         if (dto.getQtdePessoas() > computador.getCapacidadePessoas()) {
             throw new RuntimeException(
                     "Quantidade de pessoas excede a capacidade do computador ("
-                    + computador.getCapacidadePessoas() + ").");
+                            + computador.getCapacidadePessoas() + ").");
         }
 
         if (!reservaRepo.findSobrepostas(computador.getId(), inicio, fim, STATUS_BLOQUEADORES).isEmpty()) {
@@ -120,7 +135,8 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaComputador r = proximo.get();
             r.setCheckinEm(agora);
             r.setStatus(StatusReserva.EM_ANDAMENTO);
@@ -162,7 +178,8 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.EM_ANDAMENTO));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaComputador r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -206,7 +223,8 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaComputador r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -242,7 +260,8 @@ public class ReservaComputadorService {
                             reserva.getComputador().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaComputador r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -286,7 +305,7 @@ public class ReservaComputadorService {
         List<LocalDateTime> blocos = new ArrayList<>();
         for (Object[] row : reservas) {
             LocalDateTime inicio = (LocalDateTime) row[0];
-            LocalDateTime fim    = (LocalDateTime) row[1];
+            LocalDateTime fim = (LocalDateTime) row[1];
             LocalDateTime cursor = inicio;
             while (cursor.isBefore(fim)) {
                 blocos.add(cursor);
@@ -315,7 +334,8 @@ public class ReservaComputadorService {
      * Null-safe: ignora silenciosamente se o pedido não estiver vinculado.
      */
     private void atualizarStatusPedido(PedidoReserva pedido, StatusReserva novoStatus) {
-        if (pedido == null) return;
+        if (pedido == null)
+            return;
         pedido.setStatus(novoStatus);
         pedidoRepo.save(pedido);
     }

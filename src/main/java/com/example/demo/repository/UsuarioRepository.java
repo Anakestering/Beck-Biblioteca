@@ -48,4 +48,44 @@ public interface UsuarioRepository extends BaseRepository<Usuario, Long> {
                 ORDER BY u.nome ASC
             """)
     List<Usuario> buscarPorTermo(@Param("termo") String termo);
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    // ─── Relatórios ─────────────────────────────────────────────────────────
+
+    @Query("""
+                SELECT u.id, u.nome, u.email, COUNT(r) as total
+                FROM Usuario u
+                LEFT JOIN ReservaSala r ON r.usuario.id = u.id AND r.status = 'FINALIZADA'
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.ativo = TRUE
+                GROUP BY u.id, u.nome, u.email
+                ORDER BY total DESC
+            """)
+    List<Object[]> findRankingUsuarios();
+
+    @Query("""
+                SELECT COUNT(u) FROM Usuario u
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.ativo = TRUE
+                  AND (:inicio IS NULL OR u.createdAt >= :inicio)
+                  AND (:fim IS NULL OR u.createdAt <= :fim)
+            """)
+    long countNovosUsuarios(LocalDateTime inicio, LocalDateTime fim);
+
+    @Query("""
+                SELECT COUNT(DISTINCT r.usuario.id) FROM ReservaSala r
+                WHERE r.status = 'FINALIZADA'
+                  AND r.ativo = TRUE
+                  AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+                  AND (:fim IS NULL OR r.checkoutEm <= :fim)
+            """)
+    long countUsuariosAtivos(LocalDateTime inicio, LocalDateTime fim);
 }

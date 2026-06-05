@@ -18,6 +18,8 @@ public class ReservaSalaService {
     private static final int DURACAO_MINUTOS = 45;
     private static final int CHECKIN_ANTECEDENCIA_MIN = 5;
     private static final int CHECKIN_TOLERANCIA_MIN = 15;
+    private static final int HORA_ABERTURA = 7;
+    private static final int HORA_FECHAMENTO = 22;
 
     private static final List<StatusReserva> STATUS_BLOQUEADORES = List.of(
             StatusReserva.APROVADA,
@@ -57,6 +59,17 @@ public class ReservaSalaService {
 
         LocalDateTime inicio = dto.getInicioPrevisto();
         LocalDateTime fim = inicio.plusMinutes(DURACAO_MINUTOS);
+        // Valida dia da semana
+        java.time.DayOfWeek diaSemana = inicio.getDayOfWeek();
+        if (diaSemana == java.time.DayOfWeek.SATURDAY || diaSemana == java.time.DayOfWeek.SUNDAY) {
+            throw new RuntimeException("Reservas não são permitidas aos finais de semana.");
+        }
+
+        // Valida horário de funcionamento
+        if (inicio.getHour() < HORA_ABERTURA || fim.isAfter(inicio.toLocalDate().atTime(HORA_FECHAMENTO, 0))) {
+            throw new RuntimeException(
+                    "Reservas permitidas apenas entre " + HORA_ABERTURA + "h e " + HORA_FECHAMENTO + "h.");
+        }
 
         if (dto.getQtdePessoas() > sala.getCapacidadePessoas()) {
             throw new RuntimeException(
@@ -117,7 +130,8 @@ public class ReservaSalaService {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaSala r = proximo.get();
             r.setCheckinEm(agora);
             r.setStatus(StatusReserva.EM_ANDAMENTO);
@@ -158,7 +172,8 @@ public class ReservaSalaService {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.EM_ANDAMENTO));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaSala r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -202,7 +217,8 @@ public class ReservaSalaService {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaSala r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -238,7 +254,8 @@ public class ReservaSalaService {
                             reserva.getSala().getId(),
                             cursor,
                             List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty()) break;
+            if (proximo.isEmpty())
+                break;
             ReservaSala r = proximo.get();
             r.setStatus(StatusReserva.CANCELADA);
             r.setCanceladaEm(agora);
@@ -292,7 +309,7 @@ public class ReservaSalaService {
         List<LocalDateTime> blocos = new ArrayList<>();
         for (Object[] row : reservas) {
             LocalDateTime cursor = (LocalDateTime) row[0];
-            LocalDateTime fim    = (LocalDateTime) row[1];
+            LocalDateTime fim = (LocalDateTime) row[1];
             while (cursor.isBefore(fim)) {
                 blocos.add(cursor);
                 cursor = cursor.plusMinutes(DURACAO_MINUTOS);
@@ -319,7 +336,8 @@ public class ReservaSalaService {
      * Atualiza o status do PedidoReserva pai, se existir.
      */
     private void atualizarStatusPedido(PedidoReserva pedido, StatusReserva novoStatus) {
-        if (pedido == null) return;
+        if (pedido == null)
+            return;
         pedido.setStatus(novoStatus);
         pedidoRepo.save(pedido);
     }

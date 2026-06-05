@@ -42,24 +42,24 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
 
     // Cadastro de novo usuário
     public void cadastrar(UsuarioDTO dto) {
-    if (repo.existsByEmail(dto.getEmail())) {
-        throw new RuntimeException("Email já existe");
-    }
-    if (repo.existsByCpf(dto.getCpf())) {
-        throw new RuntimeException("CPF já existe");
-    }
+        if (repo.existsByEmail(dto.getEmail())) {
+            throw new RuntimeException("Email já existe");
+        }
+        if (repo.existsByCpf(dto.getCpf())) {
+            throw new RuntimeException("CPF já existe");
+        }
 
-    Usuario usuario = new Usuario();
-    usuario.setNome(dto.getNome());
-    usuario.setCpf(dto.getCpf());
-    usuario.setEmail(dto.getEmail());
-    usuario.setTelefone(dto.getTelefone());
-    usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
-    usuario.setAtivo(true);
-    usuario.setNivelAcesso(NivelAcesso.PADRAO);
+        Usuario usuario = new Usuario();
+        usuario.setNome(dto.getNome());
+        usuario.setCpf(dto.getCpf());
+        usuario.setEmail(dto.getEmail());
+        usuario.setTelefone(dto.getTelefone());
+        usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
+        usuario.setAtivo(true);
+        usuario.setNivelAcesso(NivelAcesso.PADRAO);
 
-    repo.save(usuario);
-}
+        repo.save(usuario);
+    }
 
     @Override
     public List<UsuarioDTO> read() {
@@ -183,14 +183,10 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
 
         repo.save(usuario);
 
-        try {
-            emailService.enviarEmail(
-                    email,
-                    "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
-                    "SEU CÓDIGO É: " + codigo);
-        } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Email não encontrado");
-        }
+        emailService.enviarEmail(
+                email,
+                "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
+                "SEU CÓDIGO É: " + codigo);
     }
 
     @Transactional
