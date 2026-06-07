@@ -1,6 +1,6 @@
-package com.example.demo.dtoRelatorio;
+package com.example.demo.dtoEstatisticas;
 
-public record RelatorioRecursoDTO(
+public record EstatisticasRecursoDTO(
     Long id,
     String nome,
     long totalMinutosUsados,

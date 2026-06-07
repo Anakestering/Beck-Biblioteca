@@ -142,7 +142,7 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
             AND (:fim IS NULL OR r.checkoutEm <= :fim)
             AND (:computadorIds IS NULL OR r.computador.id IN :computadorIds)
       """)
-  List<ReservaComputador> findFinalizadasParaRelatorio(
+  List<ReservaComputador> findFinalizadasParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim,
       List<Long> computadorIds);
@@ -156,29 +156,29 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
             AND r.status IN ('FINALIZADA', 'CANCELADA', 'ATRASADO', 'REJEITADA')
           GROUP BY r.computador.id, r.status
       """)
-  List<Object[]> findStatusReservasParaRelatorio(
+  List<Object[]> findStatusReservasParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim,
       List<Long> computadorIds);
 
-  @Query("""
-          SELECT r.checkinEm, r.checkoutEm, r.qtdePessoas
-          FROM ReservaComputador r
+  @Query(value = """
+          SELECT r.checkin_em, r.checkout_em, r.qtde_pessoas
+          FROM reserva_computador r
           WHERE r.status = 'FINALIZADA'
-            AND r.ativo = TRUE
-            AND (:inicio IS NULL OR r.checkinEm >= :inicio)
-            AND (:fim IS NULL OR r.checkoutEm <= :fim)
+            AND r.ativo = 1
+            AND (:inicio IS NULL OR r.checkin_em >= :inicio)
+            AND (:fim IS NULL OR r.checkout_em <= :fim)
             AND NOT EXISTS (
-              SELECT 1 FROM ReservaComputador r2
-              WHERE r2.usuario.id = r.usuario.id
-                AND r2.computador.id = r.computador.id
-                AND r2.checkinEm = r.checkinEm
-                AND r2.inicioPrevisto = r.fimPrevisto
+              SELECT 1 FROM reserva_computador r2
+              WHERE r2.usuario_id = r.usuario_id
+                AND r2.computador_id = r.computador_id
+                AND r2.checkin_em = r.checkin_em
+                AND r2.inicio_previsto = r.fim_previsto
                 AND r2.status = 'FINALIZADA'
-                AND r2.ativo = TRUE
+                AND r2.ativo = 1
             )
-      """)
-  List<Object[]> findHeatmapParaRelatorio(
+      """, nativeQuery = true)
+  List<Object[]> findHeatmapParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim);
 }

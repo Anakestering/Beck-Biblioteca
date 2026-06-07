@@ -1,6 +1,6 @@
-package com.example.demo.dtoRelatorio;
+package com.example.demo.dtoEstatisticas;
 
-public record RelatorioStatusReservasDTO(
+public record EstatisticasReservasDTO(
     long finalizadas,
     long canceladas,
     long atrasadas,

@@ -128,7 +128,7 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
             AND (:fim IS NULL OR r.checkoutEm <= :fim)
             AND (:salaIds IS NULL OR r.sala.id IN :salaIds)
       """)
-  List<ReservaSala> findFinalizadasParaRelatorio(
+  List<ReservaSala> findFinalizadasParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim,
       List<Long> salaIds);
@@ -142,29 +142,29 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
             AND r.status IN ('FINALIZADA', 'CANCELADA', 'ATRASADO', 'REJEITADA')
           GROUP BY r.sala.id, r.status
       """)
-  List<Object[]> findStatusReservasParaRelatorio(
+  List<Object[]> findStatusReservasParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim,
       List<Long> salaIds);
 
-  @Query("""
-          SELECT r.checkinEm, r.checkoutEm, r.qtdePessoas
-          FROM ReservaSala r
+  @Query(value = """
+          SELECT r.checkin_em, r.checkout_em, r.qtde_pessoas
+          FROM reserva_sala r
           WHERE r.status = 'FINALIZADA'
-            AND r.ativo = TRUE
-            AND (:inicio IS NULL OR r.checkinEm >= :inicio)
-            AND (:fim IS NULL OR r.checkoutEm <= :fim)
+            AND r.ativo = 1
+            AND (:inicio IS NULL OR r.checkin_em >= :inicio)
+            AND (:fim IS NULL OR r.checkout_em <= :fim)
             AND NOT EXISTS (
-              SELECT 1 FROM ReservaSala r2
-              WHERE r2.usuario.id = r.usuario.id
-                AND r2.sala.id = r.sala.id
-                AND r2.checkinEm = r.checkinEm
-                AND r2.inicioPrevisto = r.fimPrevisto
+              SELECT 1 FROM reserva_sala r2
+              WHERE r2.usuario_id = r.usuario_id
+                AND r2.sala_id = r.sala_id
+                AND r2.checkin_em = r.checkin_em
+                AND r2.inicio_previsto = r.fim_previsto
                 AND r2.status = 'FINALIZADA'
-                AND r2.ativo = TRUE
+                AND r2.ativo = 1
             )
-      """)
-  List<Object[]> findHeatmapParaRelatorio(
+      """, nativeQuery = true)
+  List<Object[]> findHeatmapParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim);
 }
