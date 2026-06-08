@@ -82,11 +82,33 @@ public class EstatisticasController {
         return estatisticasService.getRankingUsuarios();
     }
 
+     // ─── Ocupação por dia da semana ───────────────────────────────────────────
+ 
+    @Admin
+    @GetMapping("/ocupacao-semana")
+    public List<EstatisticasOcupacaoDiaDTO> getOcupacaoSemana(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim) {
+        return estatisticasService.getOcupacaoSemana(inicio, fim);
+    }
+
+
+    // ─── Resumo (cards do topo) ───────────────────────────────────────────────
+ 
+    @Admin
+    @GetMapping("/resumo")
+    public EstatisticasResumoDTO getResumo(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim) {
+        return estatisticasService.getResumo(inicio, fim);
+    }
+ 
+
     // ─── Histórico Linear ─────────────────────────────────────────────────────
 
     @Admin
     @GetMapping("/historico")
-    public List<EstatisticasLinearDTO> getHistorico(
+    public EstatisticasHistoricoDTO getHistorico(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim,
             @RequestParam(defaultValue = "dia") String agrupamento) {

@@ -32,7 +32,8 @@ public class HeatmapService {
         if (fim == null)
             fim = LocalDateTime.now();
 
-        // ─── Mapa com array de 3 posições: [0]=1ª Metade, [1]=2ª Metade, [2]=Valor para Cor ───
+        // ─── Mapa com array de 3 posições: [0]=1ª Metade, [1]=2ª Metade, [2]=Valor
+        // para Cor ───
         Map<String, long[]> totais = new HashMap<>();
 
         List<Object[]> salaRows = reservaSalaRepo.findHeatmapParaEstatisticas(inicio, fim);
@@ -78,7 +79,7 @@ public class HeatmapService {
             String[] parts = entry.getKey().split(":");
             int dia = Integer.parseInt(parts[0]);
             int hora = Integer.parseInt(parts[1]);
-            
+
             long[] dadosHora = entry.getValue();
             long primeiraMetade = dadosHora[0];
             long segundaMetade = dadosHora[1];
@@ -87,8 +88,9 @@ public class HeatmapService {
             long qtdDias = ocorrencias.getOrDefault(dia, 1L);
             if (qtdDias == 0)
                 qtdDias = 1L; // evita divisão por zero
-            
-            // A média que dita a COR do bloco agora se baseia estritamente na regra de > 30 min
+
+            // A média que dita a COR do bloco agora se baseia estritamente na regra de > 30
+            // min
             long media = Math.round((double) valorParaCor / qtdDias);
 
             // ATENÇÃO: Adicione os novos campos no construtor do seu DTO
@@ -112,7 +114,8 @@ public class HeatmapService {
         return null;
     }
 
-    // ─── Distribui pessoas aplicando as travas de 25min (metades) e 30min (cor) ───
+    // ─── Distribui pessoas aplicando as travas de 25min (metades) e 30min (cor)
+    // ───
     private void distribuirHoras(LocalDateTime checkin, LocalDateTime checkout,
             long pessoas, Map<String, long[]> totais) {
         if (checkin == null || checkout == null || pessoas <= 0)
@@ -123,6 +126,10 @@ public class HeatmapService {
             int diaSemana = cursor.getDayOfWeek().getValue();
             if (diaSemana >= 1 && diaSemana <= 5) {
                 int hora = cursor.getHour();
+                if (hora < 7 || hora > 21) { 
+                    cursor = cursor.plusHours(1);
+                    continue;
+                }
                 String chave = diaSemana + ":" + hora;
 
                 totais.putIfAbsent(chave, new long[3]);
