@@ -10,7 +10,6 @@ import com.example.demo.repository.ReservaComputadorRepository;
 import com.example.demo.repository.ReservaSalaRepository;
 import com.example.demo.repository.SalaRepository;
 import com.example.demo.repository.UsuarioRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -18,21 +17,28 @@ import java.time.LocalDateTime;
 import java.time.DayOfWeek;
 import java.time.temporal.WeekFields;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class EstatisticasService {
 
-    @Autowired
-    private ReservaSalaRepository reservaSalaRepo;
-    @Autowired
-    private ReservaComputadorRepository reservaComputadorRepo;
-    @Autowired
-    private UsuarioRepository usuarioRepo;
-    @Autowired
-    private SalaRepository salaRepo;
-    @Autowired
-    private ComputadorRepository computadorRepo;
+    private final ReservaSalaRepository reservaSalaRepo;
+    private final ReservaComputadorRepository reservaComputadorRepo;
+    private final UsuarioRepository usuarioRepo;
+    private final SalaRepository salaRepo;
+    private final ComputadorRepository computadorRepo;
+
+    public EstatisticasService(
+            ReservaSalaRepository reservaSalaRepo,
+            ReservaComputadorRepository reservaComputadorRepo,
+            UsuarioRepository usuarioRepo,
+            SalaRepository salaRepo,
+            ComputadorRepository computadorRepo) {
+        this.reservaSalaRepo = reservaSalaRepo;
+        this.reservaComputadorRepo = reservaComputadorRepo;
+        this.usuarioRepo = usuarioRepo;
+        this.salaRepo = salaRepo;
+        this.computadorRepo = computadorRepo;
+    }
 
     // ─── Recursos (Salas e PCs) ───────────────────────────────────────────────
 
@@ -165,20 +171,30 @@ public class EstatisticasService {
     public EstatisticasHistoricoDTO getHistorico(LocalDateTime inicio, LocalDateTime fim, String agrupamento) {
         List<ReservaSala> reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
         List<ReservaComputador> reservasPc = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+        List<ReservaSala> atrasadasSala = reservaSalaRepo.findAtrasadasParaEstatisticas(inicio, fim);
+        List<ReservaComputador> atrasadasPc = reservaComputadorRepo.findAtrasadasParaEstatisticas(inicio, fim);
 
+        // ─── Agregação de finalizadas ─────────────────────────────────────────
         TreeMap<LocalDate, Long> agregado = new TreeMap<>();
         for (ReservaSala r : reservasSala) {
-            if (r.getCheckinEm() == null)
-                continue;
+            if (r.getCheckinEm() == null) continue;
             agregado.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
         }
         for (ReservaComputador r : reservasPc) {
-            if (r.getCheckinEm() == null)
-                continue;
+            if (r.getCheckinEm() == null) continue;
             agregado.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
         }
 
-        // Média de pessoas por dia útil
+        // ─── Agregação de abandonos ───────────────────────────────────────────
+        TreeMap<LocalDate, Long> agregadoAbandono = new TreeMap<>();
+        for (ReservaSala r : atrasadasSala) {
+            agregadoAbandono.merge(chaveData(r.getInicioPrevisto(), agrupamento), 1L, Long::sum);
+        }
+        for (ReservaComputador r : atrasadasPc) {
+            agregadoAbandono.merge(chaveData(r.getInicioPrevisto(), agrupamento), 1L, Long::sum);
+        }
+
+        // ─── Média de pessoas por dia útil ────────────────────────────────────
         long totalPessoas = reservasSala.stream()
                 .filter(r -> r.getCheckinEm() != null)
                 .mapToLong(r -> r.getQtdePessoas()).sum()
@@ -190,17 +206,22 @@ public class EstatisticasService {
                 ? Math.round((totalPessoas * 10.0) / diasUteis) / 10.0
                 : 0.0;
 
-        // Converte para lista ordenada de {data, total}
-        List<Map.Entry<LocalDate, Long>> entries = new ArrayList<>(agregado.entrySet());
+        // ─── Taxa de abandono global no período ───────────────────────────────
+        long totalFinalizadas = reservasSala.size() + reservasPc.size();
+        long totalAtrasadas = atrasadasSala.size() + atrasadasPc.size();
+        double taxaAbandono = (totalFinalizadas + totalAtrasadas) > 0
+                ? Math.round((totalAtrasadas * 1000.0) / (totalFinalizadas + totalAtrasadas)) / 10.0
+                : 0.0;
 
-        // Tamanho da janela de média móvel conforme agrupamento
+        // ─── Janela da média móvel ────────────────────────────────────────────
         int janela = switch (agrupamento) {
             case "semana" -> 4;
             case "mes" -> 3;
-            default -> 7; // dia
+            default -> 7;
         };
 
-        // Calcula média móvel para cada ponto
+        // ─── Pontos de finalizadas com média móvel ────────────────────────────
+        List<Map.Entry<LocalDate, Long>> entries = new ArrayList<>(agregado.entrySet());
         List<EstatisticasHistoricoDTO.Ponto> pontos = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
             Map.Entry<LocalDate, Long> e = entries.get(i);
@@ -214,10 +235,26 @@ public class EstatisticasService {
             pontos.add(new EstatisticasHistoricoDTO.Ponto(e.getKey().toString(), e.getValue(), mm));
         }
 
-        // Calcula tendência: compara média da 1ª metade com a 2ª metade
-        EstatisticasHistoricoDTO.Tendencia tendencia = calcularTendencia(entries);
+        // ─── Pontos de abandonos com média móvel ──────────────────────────────
+        List<Map.Entry<LocalDate, Long>> entriesAbandono = new ArrayList<>(agregadoAbandono.entrySet());
+        List<EstatisticasHistoricoDTO.PontoAbandono> abandonos = new ArrayList<>();
+        for (int i = 0; i < entriesAbandono.size(); i++) {
+            Map.Entry<LocalDate, Long> e = entriesAbandono.get(i);
+            Double mm = null;
+            if (i >= janela - 1) {
+                double soma = 0;
+                for (int j = i - janela + 1; j <= i; j++)
+                    soma += entriesAbandono.get(j).getValue();
+                mm = soma / janela;
+            }
+            abandonos.add(new EstatisticasHistoricoDTO.PontoAbandono(e.getKey().toString(), e.getValue(), mm));
+        }
 
-        return new EstatisticasHistoricoDTO(pontos, tendencia, mediaPessoasDia);
+        // ─── Tendências ───────────────────────────────────────────────────────
+        EstatisticasHistoricoDTO.Tendencia tendencia = calcularTendencia(entries);
+        EstatisticasHistoricoDTO.Tendencia tendenciaAbandono = calcularTendencia(entriesAbandono);
+
+        return new EstatisticasHistoricoDTO(pontos, abandonos, tendencia, tendenciaAbandono, mediaPessoasDia, taxaAbandono);
     }
 
     /**
@@ -287,7 +324,7 @@ public class EstatisticasService {
 
         List<EstatisticasOcupacaoDiaDTO> resultado = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
-            long totalRecursos = computadorRepo.count() + salaRepo.count();
+            long totalRecursos = computadorRepo.countByAtivoTrue() + salaRepo.countByAtivoTrue();
             long disponiveis = ocorrenciasPorDia.get(i) * MINUTOS_DIA * totalRecursos;
             double taxa = disponiveis > 0
                     ? Math.min(100.0, Math.round((minutosUsadosPorDia.get(i) * 1000.0) / disponiveis) / 10.0)
@@ -341,38 +378,92 @@ public class EstatisticasService {
 
     public EstatisticasResumoDTO getResumo(LocalDateTime inicio, LocalDateTime fim) {
 
-        // Status de todas as reservas (sem filtro de sala/PC)
-        EstatisticasReservasDTO status = getStatusReservas(inicio, fim, null, null);
-        long totalReservas = status.total();
-        double taxaNoShow = totalReservas > 0
-                ? Math.round((status.atrasadas() * 100.0 / totalReservas) * 10.0) / 10.0
+        // Queries de contagem e minutos por status
+        List<Object[]> rowsSala = reservaSalaRepo.findResumoParaEstatisticas(inicio, fim);
+        List<Object[]> rowsPc   = reservaComputadorRepo.findResumoParaEstatisticas(inicio, fim);
+
+        long finalizadas = 0, atrasadas = 0;
+
+        for (Object[] row : rowsSala) {
+            String status = row[0].toString();
+            long count    = ((Number) row[1]).longValue();
+            if ("FINALIZADA".equals(status)) finalizadas += count;
+            if ("ATRASADO".equals(status))   atrasadas   += count;
+        }
+        for (Object[] row : rowsPc) {
+            String status = row[0].toString();
+            long count    = ((Number) row[1]).longValue();
+            if ("FINALIZADA".equals(status)) finalizadas += count;
+            if ("ATRASADO".equals(status))   atrasadas   += count;
+        }
+
+        double taxaNoShow = (finalizadas + atrasadas) > 0
+                ? Math.round((atrasadas * 100.0 / (finalizadas + atrasadas)) * 10.0) / 10.0
                 : 0.0;
 
-        // Todos os recursos para calcular ocupação média e recurso mais usado
-        List<EstatisticasRecursoDTO> todosRecursos = new ArrayList<>();
-        todosRecursos.addAll(getRecursosComputadores(inicio, fim, null));
-        todosRecursos.addAll(getRecursosSalas(inicio, fim, null));
+        // Minutos usados e recurso mais usado — direto das reservas finalizadas
+        List<ReservaSala> reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+        List<ReservaComputador> reservasPc = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
 
-        // Taxa de ocupação média (só recursos com minutos disponíveis)
-        double taxaOcupacao = todosRecursos.stream()
-                .filter(r -> r.minutosDisponiveis() > 0)
-                .mapToDouble(r -> (r.totalMinutosUsados() * 100.0) / r.minutosDisponiveis())
-                .average()
-                .orElse(0.0);
-        taxaOcupacao = Math.round(taxaOcupacao * 10.0) / 10.0;
+        long disponiveis = calcularMinutosDisponiveis(inicio, fim);
 
-        // Recurso mais usado por minutos
-        EstatisticasRecursoDTO maisUsado = todosRecursos.stream()
-                .max(Comparator.comparingLong(EstatisticasRecursoDTO::totalMinutosUsados))
-                .orElse(null);
+        // Agrupa minutos por sala
+        Map<Long, long[]> minutosSala = new HashMap<>();
+        for (ReservaSala r : reservasSala) {
+            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
+            minutosSala.computeIfAbsent(r.getSala().getId(), k -> new long[]{0, 0});
+            minutosSala.get(r.getSala().getId())[0] += mins;
+        }
 
-        String nomeRecurso = maisUsado != null ? maisUsado.nome() : "-";
+        // Agrupa minutos por computador
+        Map<Long, long[]> minutosPc = new HashMap<>();
+        for (ReservaComputador r : reservasPc) {
+            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
+            minutosPc.computeIfAbsent(r.getComputador().getId(), k -> new long[]{0, 0});
+            minutosPc.get(r.getComputador().getId())[0] += mins;
+        }
 
-        // Determina tipo: se o nome bate com algum computador é PC, senão SALA
-        boolean isPC = maisUsado != null && computadorRepo.existsById(maisUsado.id());
-        String tipoRecurso = maisUsado == null ? "-" : (isPC ? "PC" : "SALA");
+        // Calcula ocupação média e recurso mais usado sem chamar os métodos públicos
+        List<Sala> todasSalas = salaRepo.findAll();
+        List<Computador> todosComputadores = computadorRepo.findAll();
 
-        return new EstatisticasResumoDTO(totalReservas, taxaOcupacao, taxaNoShow, nomeRecurso, tipoRecurso);
+        double somaOcupacao = 0;
+        int totalComDisponiveis = 0;
+        String nomeRecurso = "-";
+        String tipoRecurso = "-";
+        long maxMinutos = -1;
+
+        for (Sala s : todasSalas) {
+            long usados = minutosSala.containsKey(s.getId()) ? minutosSala.get(s.getId())[0] : 0;
+            if (disponiveis > 0) {
+                somaOcupacao += (usados * 100.0) / disponiveis;
+                totalComDisponiveis++;
+            }
+            if (usados > maxMinutos) {
+                maxMinutos = usados;
+                nomeRecurso = s.getNome();
+                tipoRecurso = "SALA";
+            }
+        }
+
+        for (Computador c : todosComputadores) {
+            long usados = minutosPc.containsKey(c.getId()) ? minutosPc.get(c.getId())[0] : 0;
+            if (disponiveis > 0) {
+                somaOcupacao += (usados * 100.0) / disponiveis;
+                totalComDisponiveis++;
+            }
+            if (usados > maxMinutos) {
+                maxMinutos = usados;
+                nomeRecurso = c.getCodigo();
+                tipoRecurso = "PC";
+            }
+        }
+
+        double taxaOcupacao = totalComDisponiveis > 0
+                ? Math.round((somaOcupacao / totalComDisponiveis) * 10.0) / 10.0
+                : 0.0;
+
+        return new EstatisticasResumoDTO(finalizadas, taxaOcupacao, taxaNoShow, nomeRecurso, tipoRecurso);
     }
 
 }

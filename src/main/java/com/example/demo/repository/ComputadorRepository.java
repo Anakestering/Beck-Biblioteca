@@ -13,4 +13,6 @@ public interface ComputadorRepository extends BaseRepository<Computador, Long> {
 
     @Query("SELECT c FROM Computador c ORDER BY c.ativo DESC, c.codigo ASC")
     List<Computador> findTodas();
+
+    long countByAtivoTrue();
 }

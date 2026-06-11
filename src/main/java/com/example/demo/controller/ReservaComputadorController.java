@@ -53,9 +53,4 @@ public class ReservaComputadorController {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 
-    @PostMapping("/{id}/cancelar-admin")
-    @Admin
-    public ResponseEntity<ReservaComputador> cancelarComoAdmin(@PathVariable Long id) {
-        return ResponseEntity.ok(service.cancelarComoAdmin(id));
-    }
 }

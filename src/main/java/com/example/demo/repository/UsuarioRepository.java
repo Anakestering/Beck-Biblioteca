@@ -49,21 +49,13 @@ public interface UsuarioRepository extends BaseRepository<Usuario, Long> {
             """)
     List<Usuario> buscarPorTermo(@Param("termo") String termo);
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
     // ─── Relatórios ─────────────────────────────────────────────────────────
 
     @Query("""
-                SELECT u.id, u.nome, u.email, COUNT(r) as total
+                SELECT u.id, u.nome, u.email,
+                       (SELECT COUNT(rs) FROM ReservaSala rs WHERE rs.usuario.id = u.id AND rs.status = 'FINALIZADA') +
+                       (SELECT COUNT(rc) FROM ReservaComputador rc WHERE rc.usuario.id = u.id AND rc.status = 'FINALIZADA') as total
                 FROM Usuario u
-                LEFT JOIN ReservaSala r ON r.usuario.id = u.id AND r.status = 'FINALIZADA'
                 WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
                   AND u.ativo = TRUE
                 GROUP BY u.id, u.nome, u.email

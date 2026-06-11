@@ -61,12 +61,6 @@ public class ReservaSalaController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/cancelar-admin")
-    @Admin
-    public ResponseEntity<ReservaSala> cancelarComoAdmin(@PathVariable Long id) {
-        return ResponseEntity.ok(service.cancelarComoAdmin(id));
-    }
-
     private String getEmailLogado() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }

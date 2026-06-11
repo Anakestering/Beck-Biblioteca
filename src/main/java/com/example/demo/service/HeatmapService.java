@@ -3,7 +3,6 @@ package com.example.demo.service;
 import com.example.demo.dtoEstatisticas.EstatisticasHeatmapDTO;
 import com.example.demo.repository.ReservaComputadorRepository;
 import com.example.demo.repository.ReservaSalaRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
@@ -19,10 +18,15 @@ import java.util.Map;
 @Service
 public class HeatmapService {
 
-    @Autowired
-    private ReservaSalaRepository reservaSalaRepo;
-    @Autowired
-    private ReservaComputadorRepository reservaComputadorRepo;
+    private final ReservaSalaRepository reservaSalaRepo;
+    private final ReservaComputadorRepository reservaComputadorRepo;
+
+    public HeatmapService(
+            ReservaSalaRepository reservaSalaRepo,
+            ReservaComputadorRepository reservaComputadorRepo) {
+        this.reservaSalaRepo = reservaSalaRepo;
+        this.reservaComputadorRepo = reservaComputadorRepo;
+    }
 
     public List<EstatisticasHeatmapDTO> getHeatmap(LocalDateTime inicio, LocalDateTime fim) {
 

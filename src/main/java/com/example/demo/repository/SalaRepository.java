@@ -13,4 +13,6 @@ public interface SalaRepository extends BaseRepository<Sala, Long> {
 
     @Query("SELECT s FROM Sala s ORDER BY s.ativo DESC, s.nome ASC")
     List<Sala> findTodas();
+
+    long countByAtivoTrue();
 }

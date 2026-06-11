@@ -4,9 +4,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -19,9 +19,13 @@ import com.example.demo.dto.RecuperacaoSolicitacaoDTO;
 import com.example.demo.dto.RecuperarSenhaDTO;
 import com.example.demo.dto.TrocarSenhaDTO;
 import com.example.demo.dto.UsuarioDTO;
+import com.example.demo.dto.UsuarioOutroInfoDTO;
 import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
+import com.example.demo.entity.UsuarioOutroInfo;
 import com.example.demo.enums.NivelAcesso;
+import com.example.demo.enums.TipoUsuario;
+import com.example.demo.repository.UsuarioOutroInfoRepository;
 import com.example.demo.repository.UsuarioRepository;
 
 @Service
@@ -35,19 +39,22 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
     private UsuarioRepository repo;
 
     @Autowired
+    private UsuarioOutroInfoRepository outroInfoRepo;
+
+    @Autowired
     EmailService emailService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // Cadastro de novo usuário
+    // ─── Cadastro ─────────────────────────────────────────────────────────────
+
+    @Transactional
     public void cadastrar(UsuarioDTO dto) {
-        if (repo.existsByEmail(dto.getEmail())) {
+        if (repo.existsByEmail(dto.getEmail()))
             throw new RuntimeException("Email já existe");
-        }
-        if (repo.existsByCpf(dto.getCpf())) {
+        if (repo.existsByCpf(dto.getCpf()))
             throw new RuntimeException("CPF já existe");
-        }
 
         Usuario usuario = new Usuario();
         usuario.setNome(dto.getNome());
@@ -57,58 +64,101 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
         usuario.setAtivo(true);
         usuario.setNivelAcesso(NivelAcesso.PADRAO);
+        usuario.setTipoUsuario(dto.getTipoUsuario());
 
-        repo.save(usuario);
+        Usuario salvo = repo.save(usuario);
+
+        if (dto.getTipoUsuario() == TipoUsuario.OUTRO && dto.getOutroInfo() != null) {
+            salvarOutroInfo(salvo, dto.getOutroInfo());
+        }
     }
+
+    // ─── Listagem ─────────────────────────────────────────────────────────────
 
     @Override
     public List<UsuarioDTO> read() {
         return repo.findAllIncludingInactive()
                 .stream()
-                .map(this::toDto)
+                .map(this::toDtoComOutroInfo)
                 .toList();
     }
 
+    // ─── Update ───────────────────────────────────────────────────────────────
+
     @Override
+    @Transactional
     public UsuarioDTO update(Long id, UsuarioDTO dto) {
         Usuario usuario = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        // Verifica se o e-mail foi alterado e já existe em outro usuário
-        if (!usuario.getEmail().equals(dto.getEmail())
-                && repo.existsByEmail(dto.getEmail())) {
+        if (!usuario.getEmail().equals(dto.getEmail()) && repo.existsByEmail(dto.getEmail()))
             throw new RuntimeException("Email já existe");
-        }
-
-        // Verifica se o CPF foi alterado e já existe em outro usuário
-        if (!usuario.getCpf().equals(dto.getCpf())
-                && repo.existsByCpf(dto.getCpf())) {
+        if (!usuario.getCpf().equals(dto.getCpf()) && repo.existsByCpf(dto.getCpf()))
             throw new RuntimeException("CPF já existe");
-        }
 
-        // Atualiza apenas os campos permitidos
         usuario.setNome(dto.getNome());
         usuario.setCpf(dto.getCpf());
         usuario.setTelefone(dto.getTelefone());
         usuario.setEmail(dto.getEmail());
 
+        TipoUsuario tipoAnterior = usuario.getTipoUsuario();
+        TipoUsuario tipoNovo = dto.getTipoUsuario();
+        usuario.setTipoUsuario(tipoNovo);
+
         Usuario salvo = repo.save(usuario);
 
-        return toDto(salvo);
+        // Se mudou DE outro para outro tipo: soft delete do outroInfo
+        if (tipoAnterior == TipoUsuario.OUTRO && tipoNovo != TipoUsuario.OUTRO) {
+            outroInfoRepo.findByUsuarioIdAndAtivoTrue(id).ifPresent(info -> {
+                info.setAtivo(false);
+                info.setDeletedAt(LocalDateTime.now());
+                outroInfoRepo.save(info);
+            });
+        }
+
+        // Se é OUTRO: cria ou atualiza o outroInfo
+        if (tipoNovo == TipoUsuario.OUTRO && dto.getOutroInfo() != null) {
+            // Tenta reativar registro existente (mesmo inativo — para rastreabilidade)
+            UsuarioOutroInfo info = outroInfoRepo.findByUsuarioId(id)
+                    .orElse(new UsuarioOutroInfo());
+            info.setUsuario(salvo);
+            info.setAtivo(true);
+            info.setDeletedAt(null);
+            preencherOutroInfo(info, dto.getOutroInfo());
+            outroInfoRepo.save(info);
+        }
+
+        return toDtoComOutroInfo(salvo);
     }
+
+    // ─── Ativar ───────────────────────────────────────────────────────────────
 
     @Transactional
     public void ativar(Long id) {
         Usuario usuario = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
-
         usuario.setAtivo(true);
         usuario.setDeletedAt(null);
-
         repo.save(usuario);
     }
 
-    // usuarios criados na semana e o total
+    // ─── Busca ────────────────────────────────────────────────────────────────
+
+    public List<UsuarioDTO> buscar(String termo) {
+        return repo.buscarPorTermo(termo)
+                .stream()
+                .map(this::toDtoComOutroInfo)
+                .toList();
+    }
+
+    public UsuarioDTO buscarPorEmail(String email) {
+        Usuario usuario = repo.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
+        return toDtoComOutroInfo(usuario);
+    }
+
+    // ─── Stats ────────────────────────────────────────────────────────────────
+
     public UsuarioStatsDTO buscarStats() {
         LocalDateTime inicioDaSemana = LocalDate.now()
                 .with(DayOfWeek.MONDAY)
@@ -121,20 +171,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         return new UsuarioStatsDTO(total, ativos, semana);
     }
 
-    // UsuarioService
-    public List<UsuarioDTO> buscar(String termo) {
-        return repo.buscarPorTermo(termo)
-                .stream()
-                .map(this::toDto)
-                .toList();
-    }
-
-    // UsuarioService.java
-    public UsuarioDTO buscarPorEmail(String email) {
-        Usuario usuario = repo.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
-        return toDto(usuario);
-    }
+    // ─── Senha ────────────────────────────────────────────────────────────────
 
     private final Map<String, long[]> tentativas = new ConcurrentHashMap<>();
 
@@ -143,102 +180,87 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         long janela = 15 * 60 * 1000L;
 
         tentativas.compute(chave, (k, registro) -> {
-            if (registro == null)
-                return new long[] { agora, 1 };
-            long tempoInicio = registro[0];
-            long contagem = registro[1];
-
-            if ((agora - tempoInicio) >= janela)
-                return new long[] { agora, 1 };
-            registro[1] = contagem + 1;
+            if (registro == null) return new long[]{agora, 1};
+            if ((agora - registro[0]) >= janela) return new long[]{agora, 1};
+            registro[1]++;
             return registro;
         });
 
-        long[] registro = tentativas.get(chave);
-        return registro[1] <= 5;
+        return tentativas.get(chave)[1] <= 5;
     }
 
     @Transactional
     public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto, String ip) {
+        if (!podeEnviar(ip + ":" + dto.getEmail()))
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde.");
 
-        String chave = ip + ":" + dto.getEmail();
-
-        if (!podeEnviar(chave)) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Muitas tentativas. Tente novamente mais tarde.");
-        }
-
-        String email = dto.getEmail();
-
-        Usuario usuario = repo.findByEmail(email).orElse(null);
-
-        if (usuario == null) {
-            return;
-        }
+        Usuario usuario = repo.findByEmail(dto.getEmail()).orElse(null);
+        if (usuario == null) return;
 
         String codigo = String.valueOf(10000000 + new Random().nextInt(90000000));
-
         usuario.setCodigoRecuperacao(codigo);
         usuario.setCodigoRecuperacaoExpiracao(LocalDateTime.now().plusMinutes(20));
-
         repo.save(usuario);
 
-        emailService.enviarEmail(
-                email,
-                "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA",
-                "SEU CÓDIGO É: " + codigo);
+        emailService.enviarEmail(dto.getEmail(), "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA", "SEU CÓDIGO É: " + codigo);
     }
 
     @Transactional
     public void alterarSenha(RecuperarSenhaDTO dto) {
-        String email = dto.getEmail();
-        String codigo = dto.getCodigo();
-        String novaSenha = dto.getNovaSenha();
-
-        Usuario usuario = repo.findByEmail(email).orElse(null);
-
-        if (usuario == null) {
+        Usuario usuario = repo.findByEmail(dto.getEmail()).orElse(null);
+        if (usuario == null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
-        }
-
-        // verifica se existe o codigo
-        if (usuario.getCodigoRecuperacao() == null || usuario.getCodigoRecuperacaoExpiracao() == null) {
+        if (usuario.getCodigoRecuperacao() == null || usuario.getCodigoRecuperacaoExpiracao() == null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nenhuma solicitação de recuperação foi feita.");
-        }
-
-        // verifica se o codigo enviado tem msm 8 caracteres, tirei do dto
-        if (codigo.length() != 8) {
+        if (dto.getCodigo().length() != 8)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
-        }
-
-        // verifica se é igual
-        if (!usuario.getCodigoRecuperacao().equals(codigo)) {
+        if (!usuario.getCodigoRecuperacao().equals(dto.getCodigo()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
-        }
-
-        // verifica se esta expirado
-        if (usuario.getCodigoRecuperacaoExpiracao().isBefore(LocalDateTime.now())) {
+        if (usuario.getCodigoRecuperacaoExpiracao().isBefore(LocalDateTime.now()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
-        }
 
-        String novaSenhaCriptografada = passwordEncoder.encode(novaSenha);
-        usuario.setSenha(novaSenhaCriptografada);
-
+        usuario.setSenha(passwordEncoder.encode(dto.getNovaSenha()));
         usuario.setCodigoRecuperacao(null);
         usuario.setCodigoRecuperacaoExpiracao(null);
-
         repo.save(usuario);
     }
 
     public void trocarSenha(String email, TrocarSenhaDTO dto) {
         Usuario usuario = repo.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado."));
-
-        if (!passwordEncoder.matches(dto.getSenhaAtual(), usuario.getSenha())) {
+        if (!passwordEncoder.matches(dto.getSenhaAtual(), usuario.getSenha()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Senha atual incorreta.");
-        }
-
         usuario.setSenha(passwordEncoder.encode(dto.getNovaSenha()));
         repo.save(usuario);
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private UsuarioDTO toDtoComOutroInfo(Usuario u) {
+        UsuarioDTO dto = toDto(u);
+        if (u.getTipoUsuario() == TipoUsuario.OUTRO) {
+            outroInfoRepo.findByUsuarioIdAndAtivoTrue(u.getId()).ifPresent(info -> {
+                dto.setOutroInfo(new UsuarioOutroInfoDTO(
+                        info.getOndeConheceu(),
+                        info.isTrabalha(),
+                        info.getOndeTrabalha()));
+            });
+        }
+        return dto;
+    }
+
+    private void salvarOutroInfo(Usuario usuario, UsuarioOutroInfoDTO infoDTO) {
+        UsuarioOutroInfo info = new UsuarioOutroInfo();
+        info.setUsuario(usuario);
+        preencherOutroInfo(info, infoDTO);
+        outroInfoRepo.save(info);
+    }
+
+    private void preencherOutroInfo(UsuarioOutroInfo info, UsuarioOutroInfoDTO dto) {
+        info.setOndeConheceu(dto.getOndeConheceu() != null
+                ? dto.getOndeConheceu().substring(0, Math.min(dto.getOndeConheceu().length(), 200)) : null);
+        info.setTrabalha(dto.isTrabalha());
+        info.setOndeTrabalha(dto.isTrabalha() && dto.getOndeTrabalha() != null
+                ? dto.getOndeTrabalha().substring(0, Math.min(dto.getOndeTrabalha().length(), 200)) : null);
     }
 }

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.example.demo.enums.TipoUsuario;
 
 @Data
 @NoArgsConstructor
@@ -36,6 +37,9 @@ public class UsuarioDTO {
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String nivelAcesso;
+
+    private TipoUsuario tipoUsuario;
+    private UsuarioOutroInfoDTO outroInfo;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private java.time.LocalDateTime createdAt;

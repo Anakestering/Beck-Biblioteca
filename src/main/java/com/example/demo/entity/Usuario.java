@@ -13,6 +13,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import com.example.demo.enums.TipoUsuario;
 
 @Data
 @AllArgsConstructor
@@ -40,6 +41,10 @@ public class Usuario extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private NivelAcesso nivelAcesso = NivelAcesso.PADRAO;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_usuario", nullable = false)
+    private TipoUsuario tipoUsuario;
 
     private String codigoRecuperacao;
 

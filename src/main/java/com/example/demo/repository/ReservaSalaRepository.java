@@ -3,6 +3,7 @@ package com.example.demo.repository;
 import com.example.demo.entity.ReservaSala;
 import com.example.demo.enums.StatusReserva;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -147,6 +148,30 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
       LocalDateTime fim,
       List<Long> salaIds);
 
+  @Query("""
+          SELECT r.status, COUNT(r), COALESCE(SUM(FUNCTION('TIMESTAMPDIFF', MINUTE, r.checkinEm, r.checkoutEm)), 0)
+          FROM ReservaSala r
+          WHERE r.ativo = TRUE
+            AND (:inicio IS NULL OR r.inicioPrevisto >= :inicio)
+            AND (:fim IS NULL OR r.fimPrevisto <= :fim)
+            AND r.status IN ('FINALIZADA', 'ATRASADO')
+          GROUP BY r.status
+      """)
+  List<Object[]> findResumoParaEstatisticas(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
+
+  @Query("""
+          SELECT r FROM ReservaSala r
+          WHERE r.status = 'ATRASADO'
+            AND r.ativo = TRUE
+            AND (:inicio IS NULL OR r.inicioPrevisto >= :inicio)
+            AND (:fim IS NULL OR r.inicioPrevisto <= :fim)
+      """)
+  List<ReservaSala> findAtrasadasParaEstatisticas(
+      LocalDateTime inicio,
+      LocalDateTime fim);
+
   @Query(value = """
           SELECT r.checkin_em, r.checkout_em, r.qtde_pessoas
           FROM reserva_sala r
@@ -167,4 +192,6 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
   List<Object[]> findHeatmapParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim);
+
+      
 }

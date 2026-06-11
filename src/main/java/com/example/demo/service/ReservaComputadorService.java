@@ -238,42 +238,6 @@ public class ReservaComputadorService {
         return reserva;
     }
 
-    @Transactional
-    public ReservaComputador cancelarComoAdmin(Long reservaId) {
-        ReservaComputador reserva = buscarAtiva(reservaId);
-
-        if (List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
-                .contains(reserva.getStatus())) {
-            throw new RuntimeException("Esta reserva já foi encerrada.");
-        }
-
-        LocalDateTime agora = LocalDateTime.now();
-        reserva.setStatus(StatusReserva.CANCELADA);
-        reserva.setCanceladaEm(agora);
-        reservaRepo.save(reserva);
-
-        LocalDateTime cursor = reserva.getFimPrevisto();
-        while (true) {
-            Optional<ReservaComputador> proximo = reservaRepo
-                    .findByUsuarioIdEComputadorIdEInicioPrevisto(
-                            reserva.getUsuario().getId(),
-                            reserva.getComputador().getId(),
-                            cursor,
-                            List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
-            if (proximo.isEmpty())
-                break;
-            ReservaComputador r = proximo.get();
-            r.setStatus(StatusReserva.CANCELADA);
-            r.setCanceladaEm(agora);
-            reservaRepo.save(r);
-            cursor = r.getFimPrevisto();
-        }
-
-        atualizarStatusPedido(reserva.getPedido(), StatusReserva.CANCELADA);
-
-        return reserva;
-    }
-
     // ─── Jobs automáticos ─────────────────────────────────────────────────────
 
     @Transactional
