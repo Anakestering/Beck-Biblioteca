@@ -2,10 +2,12 @@ package com.example.demo.service;
 
 import com.example.demo.dtoEstatisticas.*;
 import com.example.demo.entity.Computador;
+import com.example.demo.entity.PedidoReserva;
 import com.example.demo.entity.ReservaComputador;
 import com.example.demo.entity.ReservaSala;
 import com.example.demo.entity.Sala;
 import com.example.demo.repository.ComputadorRepository;
+import com.example.demo.repository.PedidoReservaRepository;
 import com.example.demo.repository.ReservaComputadorRepository;
 import com.example.demo.repository.ReservaSalaRepository;
 import com.example.demo.repository.SalaRepository;
@@ -23,6 +25,7 @@ public class EstatisticasService {
 
     private final ReservaSalaRepository reservaSalaRepo;
     private final ReservaComputadorRepository reservaComputadorRepo;
+    private final PedidoReservaRepository pedidoRepo;
     private final UsuarioRepository usuarioRepo;
     private final SalaRepository salaRepo;
     private final ComputadorRepository computadorRepo;
@@ -30,11 +33,13 @@ public class EstatisticasService {
     public EstatisticasService(
             ReservaSalaRepository reservaSalaRepo,
             ReservaComputadorRepository reservaComputadorRepo,
+            PedidoReservaRepository pedidoRepo,
             UsuarioRepository usuarioRepo,
             SalaRepository salaRepo,
             ComputadorRepository computadorRepo) {
         this.reservaSalaRepo = reservaSalaRepo;
         this.reservaComputadorRepo = reservaComputadorRepo;
+        this.pedidoRepo = pedidoRepo;
         this.usuarioRepo = usuarioRepo;
         this.salaRepo = salaRepo;
         this.computadorRepo = computadorRepo;
@@ -169,59 +174,59 @@ public class EstatisticasService {
     // ─── Histórico Linear ─────────────────────────────────────────────────────
 
     public EstatisticasHistoricoDTO getHistorico(LocalDateTime inicio, LocalDateTime fim, String agrupamento) {
-        List<ReservaSala> reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
-        List<ReservaComputador> reservasPc = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
-        List<ReservaSala> atrasadasSala = reservaSalaRepo.findAtrasadasParaEstatisticas(inicio, fim);
-        List<ReservaComputador> atrasadasPc = reservaComputadorRepo.findAtrasadasParaEstatisticas(inicio, fim);
 
-        // ─── Agregação de finalizadas ─────────────────────────────────────────
-        TreeMap<LocalDate, Long> agregado = new TreeMap<>();
+        // ─── Pedidos finalizados e atrasados (métricas principais) ───────────
+        List<PedidoReserva> pedidosFinalizados = pedidoRepo.findFinalizadasParaEstatisticas(inicio, fim);
+        List<PedidoReserva> pedidosAtrasados   = pedidoRepo.findAtrasadasParaEstatisticas(inicio, fim);
+
+        // ─── Reservas individuais (contexto: recursos utilizados por data) ───
+        List<ReservaSala>      reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+        List<ReservaComputador> reservasPc  = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+
+        // ─── Agregação de pedidos finalizados por data ────────────────────────
+        TreeMap<LocalDate, Long> agregadoPedidos = new TreeMap<>();
+        for (PedidoReserva p : pedidosFinalizados)
+            agregadoPedidos.merge(chaveData(p.getInicioPrevisto(), agrupamento), 1L, Long::sum);
+
+        // ─── Agregação de recursos individuais por data (para tooltip) ───────
+        TreeMap<LocalDate, Long> agregadoReservas = new TreeMap<>();
         for (ReservaSala r : reservasSala) {
             if (r.getCheckinEm() == null) continue;
-            agregado.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
+            agregadoReservas.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
         }
         for (ReservaComputador r : reservasPc) {
             if (r.getCheckinEm() == null) continue;
-            agregado.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
+            agregadoReservas.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
         }
 
-        // ─── Agregação de abandonos ───────────────────────────────────────────
+        // ─── Agregação de abandonos por data (pedidos ATRASADO) ──────────────
         TreeMap<LocalDate, Long> agregadoAbandono = new TreeMap<>();
-        for (ReservaSala r : atrasadasSala) {
-            agregadoAbandono.merge(chaveData(r.getInicioPrevisto(), agrupamento), 1L, Long::sum);
-        }
-        for (ReservaComputador r : atrasadasPc) {
-            agregadoAbandono.merge(chaveData(r.getInicioPrevisto(), agrupamento), 1L, Long::sum);
-        }
+        for (PedidoReserva p : pedidosAtrasados)
+            agregadoAbandono.merge(chaveData(p.getInicioPrevisto(), agrupamento), 1L, Long::sum);
 
         // ─── Média de pessoas por dia útil ────────────────────────────────────
-        long totalPessoas = reservasSala.stream()
-                .filter(r -> r.getCheckinEm() != null)
-                .mapToLong(r -> r.getQtdePessoas()).sum()
-                + reservasPc.stream()
-                        .filter(r -> r.getCheckinEm() != null)
-                        .mapToLong(r -> r.getQtdePessoas()).sum();
+        long totalPessoas = pedidosFinalizados.stream().mapToLong(PedidoReserva::getQtdePessoas).sum();
         long diasUteis = calcularDiasUteis(inicio, fim);
         double mediaPessoasDia = diasUteis > 0
                 ? Math.round((totalPessoas * 10.0) / diasUteis) / 10.0
                 : 0.0;
 
         // ─── Taxa de abandono global no período ───────────────────────────────
-        long totalFinalizadas = reservasSala.size() + reservasPc.size();
-        long totalAtrasadas = atrasadasSala.size() + atrasadasPc.size();
-        double taxaAbandono = (totalFinalizadas + totalAtrasadas) > 0
-                ? Math.round((totalAtrasadas * 1000.0) / (totalFinalizadas + totalAtrasadas)) / 10.0
+        long totalFinalizados = pedidosFinalizados.size();
+        long totalAtrasados   = pedidosAtrasados.size();
+        double taxaAbandono = (totalFinalizados + totalAtrasados) > 0
+                ? Math.round((totalAtrasados * 1000.0) / (totalFinalizados + totalAtrasados)) / 10.0
                 : 0.0;
 
         // ─── Janela da média móvel ────────────────────────────────────────────
         int janela = switch (agrupamento) {
             case "semana" -> 4;
-            case "mes" -> 3;
-            default -> 7;
+            case "mes"    -> 3;
+            default       -> 7;
         };
 
-        // ─── Pontos de finalizadas com média móvel ────────────────────────────
-        List<Map.Entry<LocalDate, Long>> entries = new ArrayList<>(agregado.entrySet());
+        // ─── Pontos de pedidos finalizados com MM e totalReservas ─────────────
+        List<Map.Entry<LocalDate, Long>> entries = new ArrayList<>(agregadoPedidos.entrySet());
         List<EstatisticasHistoricoDTO.Ponto> pontos = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
             Map.Entry<LocalDate, Long> e = entries.get(i);
@@ -232,7 +237,8 @@ public class EstatisticasService {
                     soma += entries.get(j).getValue();
                 mm = soma / janela;
             }
-            pontos.add(new EstatisticasHistoricoDTO.Ponto(e.getKey().toString(), e.getValue(), mm));
+            long totalReservas = agregadoReservas.getOrDefault(e.getKey(), 0L);
+            pontos.add(new EstatisticasHistoricoDTO.Ponto(e.getKey().toString(), e.getValue(), mm, totalReservas));
         }
 
         // ─── Pontos de abandonos com média móvel ──────────────────────────────
@@ -251,7 +257,7 @@ public class EstatisticasService {
         }
 
         // ─── Tendências ───────────────────────────────────────────────────────
-        EstatisticasHistoricoDTO.Tendencia tendencia = calcularTendencia(entries);
+        EstatisticasHistoricoDTO.Tendencia tendencia         = calcularTendencia(entries);
         EstatisticasHistoricoDTO.Tendencia tendenciaAbandono = calcularTendencia(entriesAbandono);
 
         return new EstatisticasHistoricoDTO(pontos, abandonos, tendencia, tendenciaAbandono, mediaPessoasDia, taxaAbandono);
@@ -463,7 +469,9 @@ public class EstatisticasService {
                 ? Math.round((somaOcupacao / totalComDisponiveis) * 10.0) / 10.0
                 : 0.0;
 
-        return new EstatisticasResumoDTO(finalizadas, taxaOcupacao, taxaNoShow, nomeRecurso, tipoRecurso);
+        long totalPedidos = pedidoRepo.countFinalizadasParaEstatisticas(inicio, fim);
+
+        return new EstatisticasResumoDTO(totalPedidos, finalizadas, taxaOcupacao, taxaNoShow, nomeRecurso, tipoRecurso);
     }
 
 }

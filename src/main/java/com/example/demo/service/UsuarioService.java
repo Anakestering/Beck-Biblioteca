@@ -101,14 +101,24 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         usuario.setTelefone(dto.getTelefone());
         usuario.setEmail(dto.getEmail());
 
+        Usuario salvo = repo.save(usuario);
+
+        return toDtoComOutroInfo(salvo);
+    }
+
+    // ─── Atualizar tipo ───────────────────────────────────────────────────────
+
+    @Transactional
+    public UsuarioDTO atualizarTipo(Long id, TipoUsuario novoTipo, UsuarioOutroInfoDTO outroInfo) {
+        Usuario usuario = repo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+
         TipoUsuario tipoAnterior = usuario.getTipoUsuario();
-        TipoUsuario tipoNovo = dto.getTipoUsuario();
-        usuario.setTipoUsuario(tipoNovo);
+        usuario.setTipoUsuario(novoTipo);
 
         Usuario salvo = repo.save(usuario);
 
-        // Se mudou DE outro para outro tipo: soft delete do outroInfo
-        if (tipoAnterior == TipoUsuario.OUTRO && tipoNovo != TipoUsuario.OUTRO) {
+        if (tipoAnterior == TipoUsuario.OUTRO && novoTipo != TipoUsuario.OUTRO) {
             outroInfoRepo.findByUsuarioIdAndAtivoTrue(id).ifPresent(info -> {
                 info.setAtivo(false);
                 info.setDeletedAt(LocalDateTime.now());
@@ -116,15 +126,13 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
             });
         }
 
-        // Se é OUTRO: cria ou atualiza o outroInfo
-        if (tipoNovo == TipoUsuario.OUTRO && dto.getOutroInfo() != null) {
-            // Tenta reativar registro existente (mesmo inativo — para rastreabilidade)
+        if (novoTipo == TipoUsuario.OUTRO && outroInfo != null) {
             UsuarioOutroInfo info = outroInfoRepo.findByUsuarioId(id)
                     .orElse(new UsuarioOutroInfo());
             info.setUsuario(salvo);
             info.setAtivo(true);
             info.setDeletedAt(null);
-            preencherOutroInfo(info, dto.getOutroInfo());
+            preencherOutroInfo(info, outroInfo);
             outroInfoRepo.save(info);
         }
 

@@ -10,7 +10,9 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Map;
 
+import com.example.demo.annotations.Admin;
 import com.example.demo.annotations.Public;
+import com.example.demo.dto.AtualizarTipoDTO;
 import com.example.demo.dto.TrocarSenhaDTO;
 import com.example.demo.dto.UsuarioDTO;
 import com.example.demo.dto.UsuarioStatsDTO;
@@ -79,6 +81,14 @@ public class UsuarioController extends BaseController<UsuarioDTO> {
         }
 
         return usuarioService.update(id, dto);
+    }
+
+    @Admin
+    @PatchMapping("/{id}/tipo")
+    public ResponseEntity<UsuarioDTO> atualizarTipo(
+            @PathVariable Long id,
+            @RequestBody AtualizarTipoDTO body) {
+        return ResponseEntity.ok(usuarioService.atualizarTipo(id, body.getTipoUsuario(), body.getOutroInfo()));
     }
 
     @PatchMapping("/me/senha")

@@ -192,7 +192,7 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
           WHERE r.status = 'FINALIZADA'
             AND r.ativo = 1
             AND (:inicio IS NULL OR r.checkin_em >= :inicio)
-            AND (:fim IS NULL OR r.checkout_em <= :fim)
+            AND (:fim IS NULL OR r.checkin_em <= :fim)
             AND NOT EXISTS (
               SELECT 1 FROM reserva_computador r2
               WHERE r2.usuario_id = r.usuario_id

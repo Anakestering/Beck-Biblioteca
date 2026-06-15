@@ -16,9 +16,10 @@ public record EstatisticasHistoricoDTO(
     double taxaAbandono              // % de ATRASADO sobre (FINALIZADA + ATRASADO) no período
 ) {
     public record Ponto(
-        String data,   // "yyyy-MM-dd"
-        long total,
-        Double mm      // média móvel — null nos primeiros (janela - 1) pontos
+        String data,          // "yyyy-MM-dd"
+        long total,           // pedidos finalizados (linha do gráfico)
+        Double mm,            // média móvel — null nos primeiros (janela - 1) pontos
+        long totalReservas    // recursos individuais utilizados (salas + PCs) — contexto tooltip
     ) {}
 
     public record PontoAbandono(

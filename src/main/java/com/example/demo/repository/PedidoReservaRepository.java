@@ -125,6 +125,41 @@ public interface PedidoReservaRepository extends BaseRepository<PedidoReserva, L
                         @Param("status") StatusReserva status,
                         @Param("dataInicio") LocalDateTime dataInicio,
                         @Param("dataFim") LocalDateTime dataFim,
-                        @Param("busca") String busca); 
+                        @Param("busca") String busca);
+
+        // ─── Estatísticas ─────────────────────────────────────────────────────────
+
+        @Query("""
+                        SELECT p FROM PedidoReserva p
+                        WHERE p.ativo = TRUE
+                          AND p.status = 'FINALIZADA'
+                          AND (:inicio IS NULL OR p.inicioPrevisto >= :inicio)
+                          AND (:fim    IS NULL OR p.inicioPrevisto <= :fim)
+                    """)
+        List<PedidoReserva> findFinalizadasParaEstatisticas(
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
+
+        @Query("""
+                        SELECT p FROM PedidoReserva p
+                        WHERE p.ativo = TRUE
+                          AND p.status = 'ATRASADO'
+                          AND (:inicio IS NULL OR p.inicioPrevisto >= :inicio)
+                          AND (:fim    IS NULL OR p.inicioPrevisto <= :fim)
+                    """)
+        List<PedidoReserva> findAtrasadasParaEstatisticas(
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
+
+        @Query("""
+                        SELECT COUNT(p) FROM PedidoReserva p
+                        WHERE p.ativo = TRUE
+                          AND p.status = 'FINALIZADA'
+                          AND (:inicio IS NULL OR p.inicioPrevisto >= :inicio)
+                          AND (:fim    IS NULL OR p.inicioPrevisto <= :fim)
+                    """)
+        long countFinalizadasParaEstatisticas(
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
 
 }
