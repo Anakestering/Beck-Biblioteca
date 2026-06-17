@@ -1,0 +1,306 @@
+package com.example.demo.service;
+
+import com.example.demo.dto.ReservaComputadorDTO;
+import com.example.demo.entity.*;
+import com.example.demo.enums.StatusReserva;
+import com.example.demo.repository.*;
+import jakarta.transaction.Transactional;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class ReservaComputadorService {
+
+    private static final int DURACAO_MINUTOS = 45;
+    private static final int CHECKIN_ANTECEDENCIA_MIN = 5;
+    private static final int CHECKIN_TOLERANCIA_MIN = 15;
+    // ─── Constantes de funcionamento ──────────────────────────────────────────
+    private static final int HORA_ABERTURA = 7;
+    private static final int HORA_FECHAMENTO = 22;
+
+    private static final List<StatusReserva> STATUS_BLOQUEADORES = List.of(
+            StatusReserva.APROVADA,
+            StatusReserva.PENDENTE_APROVACAO,
+            StatusReserva.EM_ANDAMENTO);
+
+    private final ReservaComputadorRepository reservaRepo;
+    private final ComputadorRepository computadorRepo;
+    private final UsuarioRepository usuarioRepo;
+    private final PedidoReservaRepository pedidoRepo;
+
+    public ReservaComputadorService(
+            ReservaComputadorRepository reservaRepo,
+            ComputadorRepository computadorRepo,
+            UsuarioRepository usuarioRepo,
+            PedidoReservaRepository pedidoRepo) {
+        this.reservaRepo = reservaRepo;
+        this.computadorRepo = computadorRepo;
+        this.usuarioRepo = usuarioRepo;
+        this.pedidoRepo = pedidoRepo;
+    }
+
+    // ─── Criar ────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public ReservaComputador criar(ReservaComputadorDTO dto, String emailUsuarioLogado) {
+        Computador computador = computadorRepo.findById(dto.getComputadorId())
+                .orElseThrow(() -> new RuntimeException("Computador não encontrado."));
+
+        Usuario usuarioLogado = usuarioRepo.findByEmail(emailUsuarioLogado)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado."));
+
+        Usuario dono = (dto.getUsuarioId() != null)
+                ? usuarioRepo.findById(dto.getUsuarioId())
+                        .orElseThrow(() -> new RuntimeException("Usuário não encontrado."))
+                : usuarioLogado;
+
+        LocalDateTime inicio = dto.getInicioPrevisto();
+        LocalDateTime fim = dto.getFimPrevisto() != null
+                ? dto.getFimPrevisto()
+                : inicio.plusMinutes(DURACAO_MINUTOS);
+
+        // Valida dia da semana
+        java.time.DayOfWeek diaSemana = inicio.getDayOfWeek();
+        if (diaSemana == java.time.DayOfWeek.SATURDAY || diaSemana == java.time.DayOfWeek.SUNDAY) {
+            throw new RuntimeException("Reservas não são permitidas aos finais de semana.");
+        }
+
+        // Valida horário de funcionamento
+        if (inicio.getHour() < HORA_ABERTURA || fim.isAfter(inicio.toLocalDate().atTime(HORA_FECHAMENTO, 0))) {
+            throw new RuntimeException(
+                    "Reservas permitidas apenas entre " + HORA_ABERTURA + "h e " + HORA_FECHAMENTO + "h.");
+        }
+
+        if (dto.getQtdePessoas() > computador.getCapacidadePessoas()) {
+            throw new RuntimeException(
+                    "Quantidade de pessoas excede a capacidade do computador ("
+                            + computador.getCapacidadePessoas() + ").");
+        }
+
+        if (!reservaRepo.findSobrepostas(computador.getId(), inicio, fim, STATUS_BLOQUEADORES).isEmpty()) {
+            throw new RuntimeException("Este computador já está reservado neste horário.");
+        }
+
+        ReservaComputador reserva = new ReservaComputador();
+        reserva.setComputador(computador);
+        reserva.setUsuario(dono);
+        reserva.setCriadaPorUsuario(usuarioLogado);
+        reserva.setInicioPrevisto(inicio);
+        reserva.setFimPrevisto(fim);
+        reserva.setQtdePessoas(dto.getQtdePessoas());
+        reserva.setObservacao(dto.getObservacao());
+        reserva.setStatus(StatusReserva.APROVADA);
+
+        return reservaRepo.save(reserva);
+    }
+
+    // ─── Check-in ─────────────────────────────────────────────────────────────
+
+    @Transactional
+    public ReservaComputador checkin(Long reservaId, String emailUsuarioLogado) {
+        ReservaComputador reserva = buscarAtiva(reservaId);
+        validarDono(reserva.getUsuario().getEmail(), emailUsuarioLogado);
+
+        if (reserva.getStatus() != StatusReserva.APROVADA) {
+            throw new RuntimeException("Check-in só é permitido para reservas com status APROVADA.");
+        }
+
+        LocalDateTime agora = LocalDateTime.now();
+        LocalDateTime janelaInicio = reserva.getInicioPrevisto().minusMinutes(CHECKIN_ANTECEDENCIA_MIN);
+        LocalDateTime janelaFim = reserva.getInicioPrevisto().plusMinutes(CHECKIN_TOLERANCIA_MIN);
+
+        if (agora.isBefore(janelaInicio)) {
+            throw new RuntimeException("Check-in disponível somente a partir de "
+                    + CHECKIN_ANTECEDENCIA_MIN + " minutos antes do início.");
+        }
+        if (agora.isAfter(janelaFim)) {
+            throw new RuntimeException("Prazo de check-in encerrado. A reserva será marcada como atrasada.");
+        }
+
+        // Faz checkin no bloco atual
+        reserva.setCheckinEm(agora);
+        reserva.setStatus(StatusReserva.EM_ANDAMENTO);
+        reservaRepo.save(reserva);
+
+        // Propaga checkin para todos os blocos consecutivos seguintes
+        LocalDateTime cursor = reserva.getFimPrevisto();
+        while (true) {
+            Optional<ReservaComputador> proximo = reservaRepo
+                    .findByUsuarioIdEComputadorIdEInicioPrevisto(
+                            reserva.getUsuario().getId(),
+                            reserva.getComputador().getId(),
+                            cursor,
+                            List.of(StatusReserva.APROVADA));
+            if (proximo.isEmpty())
+                break;
+            ReservaComputador r = proximo.get();
+            r.setCheckinEm(agora);
+            r.setStatus(StatusReserva.EM_ANDAMENTO);
+            reservaRepo.save(r);
+            cursor = r.getFimPrevisto();
+        }
+
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.EM_ANDAMENTO);
+
+        return reserva;
+    }
+
+    // ─── Check-out ────────────────────────────────────────────────────────────
+
+    @Transactional
+    public ReservaComputador checkout(Long reservaId, String emailUsuarioLogado) {
+        ReservaComputador reserva = buscarAtiva(reservaId);
+        validarDono(reserva.getUsuario().getEmail(), emailUsuarioLogado);
+
+        if (reserva.getStatus() != StatusReserva.EM_ANDAMENTO) {
+            throw new RuntimeException("Check-out só é permitido para reservas em andamento.");
+        }
+
+        LocalDateTime agora = LocalDateTime.now();
+
+        // Finaliza o bloco atual
+        reserva.setCheckoutEm(agora);
+        reserva.setStatus(StatusReserva.FINALIZADA);
+        reserva.setCheckoutAutomatico(false);
+        reservaRepo.save(reserva);
+
+        // Cancela blocos seguintes EM_ANDAMENTO
+        LocalDateTime cursor = reserva.getFimPrevisto();
+        while (true) {
+            Optional<ReservaComputador> proximo = reservaRepo
+                    .findByUsuarioIdEComputadorIdEInicioPrevisto(
+                            reserva.getUsuario().getId(),
+                            reserva.getComputador().getId(),
+                            cursor,
+                            List.of(StatusReserva.EM_ANDAMENTO));
+            if (proximo.isEmpty())
+                break;
+            ReservaComputador r = proximo.get();
+            r.setStatus(StatusReserva.CANCELADA);
+            r.setCanceladaEm(agora);
+            reservaRepo.save(r);
+            cursor = r.getFimPrevisto();
+        }
+
+        // Atualiza status do pedido pai para FINALIZADA
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.FINALIZADA);
+
+        return reserva;
+    }
+
+    // ─── Cancelar ─────────────────────────────────────────────────────────────
+
+    @Transactional
+    public ReservaComputador cancelar(Long reservaId, String emailUsuarioLogado) {
+        ReservaComputador reserva = buscarAtiva(reservaId);
+        validarDono(reserva.getUsuario().getEmail(), emailUsuarioLogado);
+
+        if (List.of(StatusReserva.CANCELADA, StatusReserva.FINALIZADA, StatusReserva.ATRASADO)
+                .contains(reserva.getStatus())) {
+            throw new RuntimeException("Esta reserva já foi encerrada.");
+        }
+
+        if (LocalDateTime.now().isAfter(reserva.getInicioPrevisto().minusHours(1))) {
+            throw new RuntimeException("Cancelamento permitido somente até 1h antes do início.");
+        }
+
+        LocalDateTime agora = LocalDateTime.now();
+
+        reserva.setStatus(StatusReserva.CANCELADA);
+        reserva.setCanceladaEm(agora);
+        reservaRepo.save(reserva);
+
+        LocalDateTime cursor = reserva.getFimPrevisto();
+        while (true) {
+            Optional<ReservaComputador> proximo = reservaRepo
+                    .findByUsuarioIdEComputadorIdEInicioPrevisto(
+                            reserva.getUsuario().getId(),
+                            reserva.getComputador().getId(),
+                            cursor,
+                            List.of(StatusReserva.APROVADA, StatusReserva.PENDENTE_APROVACAO));
+            if (proximo.isEmpty())
+                break;
+            ReservaComputador r = proximo.get();
+            r.setStatus(StatusReserva.CANCELADA);
+            r.setCanceladaEm(agora);
+            reservaRepo.save(r);
+            cursor = r.getFimPrevisto();
+        }
+
+        // Atualiza status do pedido pai
+        atualizarStatusPedido(reserva.getPedido(), StatusReserva.CANCELADA);
+
+        return reserva;
+    }
+
+    // ─── Jobs automáticos ─────────────────────────────────────────────────────
+
+    @Transactional
+    public void processarAutoCheckout() {
+        reservaRepo.findParaAutoCheckout(LocalDateTime.now()).forEach(r -> {
+            r.setCheckoutEm(r.getFimPrevisto());
+            r.setCheckoutAutomatico(true);
+            r.setStatus(StatusReserva.FINALIZADA);
+            reservaRepo.save(r);
+            atualizarStatusPedido(r.getPedido(), StatusReserva.FINALIZADA);
+        });
+    }
+
+    @Transactional
+    public void processarAtrasado() {
+        LocalDateTime limite = LocalDateTime.now().minusMinutes(CHECKIN_TOLERANCIA_MIN);
+        reservaRepo.findParaAtrasado(limite).forEach(r -> {
+            r.setStatus(StatusReserva.ATRASADO);
+            r.setAtrasadoEm(LocalDateTime.now());
+            reservaRepo.save(r);
+            atualizarStatusPedido(r.getPedido(), StatusReserva.ATRASADO);
+        });
+    }
+
+    // ─── Listagens ────────────────────────────────────────────────────────────
+
+    public List<LocalDateTime> horariosOcupados(Long computadorId, LocalDateTime data) {
+        List<Object[]> reservas = reservaRepo.findHorariosOcupados(computadorId, data);
+        List<LocalDateTime> blocos = new ArrayList<>();
+        for (Object[] row : reservas) {
+            LocalDateTime inicio = (LocalDateTime) row[0];
+            LocalDateTime fim = (LocalDateTime) row[1];
+            LocalDateTime cursor = inicio;
+            while (cursor.isBefore(fim)) {
+                blocos.add(cursor);
+                cursor = cursor.plusMinutes(DURACAO_MINUTOS);
+            }
+        }
+        return blocos;
+    }
+
+    // ─── Helpers privados ─────────────────────────────────────────────────────
+
+    private ReservaComputador buscarAtiva(Long id) {
+        return reservaRepo.findById(id)
+                .filter(ReservaComputador::isAtivo)
+                .orElseThrow(() -> new RuntimeException("Reserva não encontrada."));
+    }
+
+    private void validarDono(String emailDono, String emailLogado) {
+        if (!emailDono.equals(emailLogado)) {
+            throw new RuntimeException("Você não tem permissão para alterar esta reserva.");
+        }
+    }
+
+    /**
+     * Atualiza o status do PedidoReserva pai, se existir.
+     * Null-safe: ignora silenciosamente se o pedido não estiver vinculado.
+     */
+    private void atualizarStatusPedido(PedidoReserva pedido, StatusReserva novoStatus) {
+        if (pedido == null)
+            return;
+        pedido.setStatus(novoStatus);
+        pedidoRepo.save(pedido);
+    }
+}
