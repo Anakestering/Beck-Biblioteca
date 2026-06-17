@@ -43,4 +43,7 @@ public class UsuarioDTO {
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private java.time.LocalDateTime createdAt;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Boolean pendente;
 }

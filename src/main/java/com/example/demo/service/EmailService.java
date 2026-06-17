@@ -40,6 +40,33 @@ public class EmailService {
         }
     }
 
+    @Async
+    public void enviarEmailComCodigo(String destinatario, String nome, String codigo, String link, String mensagem) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom("senai@participativo.com.br");
+            helper.setTo(destinatario);
+            helper.setSubject("Seu código de acesso — Biblioteca");
+
+            ClassPathResource resource = new ClassPathResource("templates/email/codigo-acesso.html");
+            String html = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+
+            html = html.replace("{{nome}}", nome)
+                       .replace("{{codigo}}", codigo)
+                       .replace("{{link}}", link)
+                       .replace("{{mensagem}}", mensagem);
+
+            helper.setText(html, true);
+
+            mailSender.send(message);
+            log.info("E-mail de código enviado para: {}", destinatario);
+        } catch (MessagingException | IOException e) {
+            log.error("Falha ao enviar e-mail de código: {}", e.getMessage());
+        }
+    }
+
     @Async // <─── Também em segundo plano
     public void enviarEmailFromTemplate(String destinatario, String titulo, String fileName) {
         try {

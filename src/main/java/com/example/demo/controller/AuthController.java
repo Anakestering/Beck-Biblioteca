@@ -71,6 +71,11 @@ public class AuthController {
 
         Optional<Usuario> usuarioOpt = usuarioRepository.findByEmail(email);
 
+        if (usuarioOpt.isPresent() && usuarioOpt.get().getSenha() == null) {
+            return ResponseEntity.status(403).body(
+                Map.of("message", "Confirme seu email e crie sua senha antes de entrar."));
+        }
+
         if (usuarioOpt.isPresent() && passwordEncoder.matches(senha, usuarioOpt.get().getSenha())) {
             tentativasLogin.remove(email);
 

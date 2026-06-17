@@ -61,16 +61,21 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         usuario.setCpf(dto.getCpf());
         usuario.setEmail(dto.getEmail());
         usuario.setTelefone(dto.getTelefone());
-        usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
         usuario.setAtivo(true);
         usuario.setNivelAcesso(NivelAcesso.PADRAO);
         usuario.setTipoUsuario(dto.getTipoUsuario());
+
+        String codigo = String.valueOf(10000000 + new Random().nextInt(90000000));
+        usuario.setCodigoRecuperacao(codigo);
+        usuario.setCodigoRecuperacaoExpiracao(LocalDateTime.now().plusMinutes(20));
 
         Usuario salvo = repo.save(usuario);
 
         if (dto.getTipoUsuario() == TipoUsuario.OUTRO && dto.getOutroInfo() != null) {
             salvarOutroInfo(salvo, dto.getOutroInfo());
         }
+
+        enviarEmailCodigo(salvo, codigo, "Bem-vindo! Use o código abaixo para criar sua senha e acessar o sistema.");
     }
 
     // ─── Listagem ─────────────────────────────────────────────────────────────
@@ -188,8 +193,10 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         long janela = 15 * 60 * 1000L;
 
         tentativas.compute(chave, (k, registro) -> {
-            if (registro == null) return new long[]{agora, 1};
-            if ((agora - registro[0]) >= janela) return new long[]{agora, 1};
+            if (registro == null)
+                return new long[] { agora, 1 };
+            if ((agora - registro[0]) >= janela)
+                return new long[] { agora, 1 };
             registro[1]++;
             return registro;
         });
@@ -200,17 +207,19 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
     @Transactional
     public void solicitarCodigo(RecuperacaoSolicitacaoDTO dto, String ip) {
         if (!podeEnviar(ip + ":" + dto.getEmail()))
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde.");
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Muitas tentativas. Tente novamente mais tarde.");
 
         Usuario usuario = repo.findByEmail(dto.getEmail()).orElse(null);
-        if (usuario == null) return;
+        if (usuario == null)
+            return;
 
         String codigo = String.valueOf(10000000 + new Random().nextInt(90000000));
         usuario.setCodigoRecuperacao(codigo);
         usuario.setCodigoRecuperacaoExpiracao(LocalDateTime.now().plusMinutes(20));
         repo.save(usuario);
 
-        emailService.enviarEmail(dto.getEmail(), "SOLICITAÇÃO DE RECUPERAÇÃO DE SENHA", "SEU CÓDIGO É: " + codigo);
+        enviarEmailCodigo(usuario, codigo, "Recebemos uma solicitação para redefinir sua senha. Use o código abaixo.");
     }
 
     @Transactional
@@ -246,6 +255,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
 
     private UsuarioDTO toDtoComOutroInfo(Usuario u) {
         UsuarioDTO dto = toDto(u);
+        dto.setPendente(u.getSenha() == null);
         if (u.getTipoUsuario() == TipoUsuario.OUTRO) {
             outroInfoRepo.findByUsuarioIdAndAtivoTrue(u.getId()).ifPresent(info -> {
                 dto.setOutroInfo(new UsuarioOutroInfoDTO(
@@ -266,9 +276,16 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
 
     private void preencherOutroInfo(UsuarioOutroInfo info, UsuarioOutroInfoDTO dto) {
         info.setOndeConheceu(dto.getOndeConheceu() != null
-                ? dto.getOndeConheceu().substring(0, Math.min(dto.getOndeConheceu().length(), 200)) : null);
+                ? dto.getOndeConheceu().substring(0, Math.min(dto.getOndeConheceu().length(), 200))
+                : null);
         info.setTrabalha(dto.isTrabalha());
         info.setOndeTrabalha(dto.isTrabalha() && dto.getOndeTrabalha() != null
-                ? dto.getOndeTrabalha().substring(0, Math.min(dto.getOndeTrabalha().length(), 200)) : null);
+                ? dto.getOndeTrabalha().substring(0, Math.min(dto.getOndeTrabalha().length(), 200))
+                : null);
+    }
+
+    private void enviarEmailCodigo(Usuario usuario, String codigo, String mensagem) {
+        String link = "http://localhost:3000/recuperar-senha?email=" + usuario.getEmail();
+        emailService.enviarEmailComCodigo(usuario.getEmail(), usuario.getNome(), codigo, link, mensagem);
     }
 }
