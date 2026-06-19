@@ -41,10 +41,17 @@ public class UsuarioController extends BaseController<UsuarioDTO> {
         return ResponseEntity.ok("Cadastrado");
     }
 
+    @Admin
     @PutMapping("/{id}/ativar")
     public ResponseEntity<Void> ativar(@PathVariable Long id) {
         usuarioService.ativar(id);
+        return ResponseEntity.noContent().build();
+    }
 
+    @Admin
+    @PutMapping("/{id}/desativar")
+    public ResponseEntity<Void> desativar(@PathVariable Long id) {
+        usuarioService.desativar(id);
         return ResponseEntity.noContent().build();
     }
 

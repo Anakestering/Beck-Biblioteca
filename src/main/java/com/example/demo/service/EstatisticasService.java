@@ -47,21 +47,23 @@ public class EstatisticasService {
 
     // ─── Recursos (Salas e PCs) ───────────────────────────────────────────────
 
-    public List<EstatisticasRecursoDTO> getRecursosSalas(LocalDateTime inicio, LocalDateTime fim, List<Long> salaIds) {
+    public List<EstatisticasRecursoDTO> getRecursosSalas(LocalDateTime inicio, LocalDateTime fim, List<Long> salaIds, int diasFuturo) {
         List<Sala> salas = salaIds != null && !salaIds.isEmpty()
                 ? salaRepo.findAllById(salaIds)
                 : salaRepo.findAll();
 
-        List<ReservaSala> reservas = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, salaIds);
-
-        Map<Long, Long> minutos = new HashMap<>();
+        // Acumula minutos e contagem de reservas finalizadas por sala
+        Map<Long, Long> minutos  = new HashMap<>();
         Map<Long, Long> contagem = new HashMap<>();
-        for (ReservaSala r : reservas) {
-            Long id = r.getSala().getId();
-            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
-            minutos.merge(id, mins, Long::sum);
-            contagem.merge(id, 1L, Long::sum);
+        for (ReservaSala r : reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, salaIds)) {
+            acumularMinutos(minutos, r.getSala().getId(), r.getCheckinEm(), r.getCheckoutEm());
+            contagem.merge(r.getSala().getId(), 1L, Long::sum);
         }
+
+        // Minutos futuros: reservas APROVADA/PENDENTE nos próximos X dias
+        Map<Long, Long> minutosFuturos = acumularMinutosDasRows(
+                reservaSalaRepo.findMinutosFuturosPorSala(
+                        LocalDateTime.now(), LocalDateTime.now().plusDays(diasFuturo), salaIds));
 
         long disponiveis = calcularMinutosDisponiveis(inicio, fim);
 
@@ -71,28 +73,30 @@ public class EstatisticasService {
                         s.getNome(),
                         minutos.getOrDefault(s.getId(), 0L),
                         contagem.getOrDefault(s.getId(), 0L),
-                        disponiveis))
+                        disponiveis,
+                        minutosFuturos.getOrDefault(s.getId(), 0L)))
                 .sorted(Comparator.comparing(EstatisticasRecursoDTO::nome))
                 .toList();
     }
 
     public List<EstatisticasRecursoDTO> getRecursosComputadores(LocalDateTime inicio, LocalDateTime fim,
-            List<Long> computadorIds) {
+            List<Long> computadorIds, int diasFuturo) {
         List<Computador> computadores = computadorIds != null && !computadorIds.isEmpty()
                 ? computadorRepo.findAllById(computadorIds)
                 : computadorRepo.findAll();
 
-        List<ReservaComputador> reservas = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim,
-                computadorIds);
-
-        Map<Long, Long> minutos = new HashMap<>();
+        // Acumula minutos e contagem de reservas finalizadas por computador
+        Map<Long, Long> minutos  = new HashMap<>();
         Map<Long, Long> contagem = new HashMap<>();
-        for (ReservaComputador r : reservas) {
-            Long id = r.getComputador().getId();
-            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
-            minutos.merge(id, mins, Long::sum);
-            contagem.merge(id, 1L, Long::sum);
+        for (ReservaComputador r : reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, computadorIds)) {
+            acumularMinutos(minutos, r.getComputador().getId(), r.getCheckinEm(), r.getCheckoutEm());
+            contagem.merge(r.getComputador().getId(), 1L, Long::sum);
         }
+
+        // Minutos futuros: reservas APROVADA/PENDENTE nos próximos X dias
+        Map<Long, Long> minutosFuturos = acumularMinutosDasRows(
+                reservaComputadorRepo.findMinutosFuturosPorComputador(
+                        LocalDateTime.now(), LocalDateTime.now().plusDays(diasFuturo), computadorIds));
 
         long disponiveis = calcularMinutosDisponiveis(inicio, fim);
 
@@ -102,9 +106,31 @@ public class EstatisticasService {
                         c.getCodigo(),
                         minutos.getOrDefault(c.getId(), 0L),
                         contagem.getOrDefault(c.getId(), 0L),
-                        disponiveis))
+                        disponiveis,
+                        minutosFuturos.getOrDefault(c.getId(), 0L)))
                 .sorted(Comparator.comparing(EstatisticasRecursoDTO::nome))
                 .toList();
+    }
+
+    /**
+     * Adiciona a duração de um período (checkin → checkout) ao mapa acumulador
+     * indexado por recurso ID. Ignora registros com datas nulas.
+     */
+    private void acumularMinutos(Map<Long, Long> mapa, Long id, LocalDateTime checkin, LocalDateTime checkout) {
+        if (checkin == null || checkout == null) return;
+        mapa.merge(id, Duration.between(checkin, checkout).toMinutes(), Long::sum);
+    }
+
+    /**
+     * Converte o resultado de queries de minutos futuros (Object[] → [id, soma])
+     * em mapa id → totalMinutos. Padrão das queries findMinutosFuturosPor*.
+     */
+    private Map<Long, Long> acumularMinutosDasRows(List<Object[]> rows) {
+        Map<Long, Long> mapa = new HashMap<>();
+        for (Object[] row : rows) {
+            mapa.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return mapa;
     }
 
     // ─── Status das Reservas ──────────────────────────────────────────────────
@@ -315,8 +341,20 @@ public class EstatisticasService {
         Map<Integer, Long> ocorrenciasPorDia = new HashMap<>();
         for (int i = 1; i <= 5; i++)
             ocorrenciasPorDia.put(i, 0L);
-        LocalDate cursor = inicio.toLocalDate();
-        LocalDate fimDate = fim.toLocalDate();
+
+        // Se inicio/fim forem null (filtro "Desde o início"), derivar do dado real
+        LocalDateTime inicioEfetivo = inicio;
+        LocalDateTime fimEfetivo    = fim;
+        if (inicioEfetivo == null) {
+            inicioEfetivo = java.util.stream.Stream.concat(
+                    reservasSala.stream().filter(r -> r.getCheckinEm() != null).map(ReservaSala::getCheckinEm),
+                    reservasPc.stream().filter(r -> r.getCheckinEm() != null).map(ReservaComputador::getCheckinEm)
+            ).min(Comparator.naturalOrder()).orElse(LocalDateTime.now().minusYears(5));
+        }
+        if (fimEfetivo == null) fimEfetivo = LocalDateTime.now();
+
+        LocalDate cursor  = inicioEfetivo.toLocalDate();
+        LocalDate fimDate = fimEfetivo.toLocalDate();
         while (!cursor.isAfter(fimDate)) {
             int dow = cursor.getDayOfWeek().getValue();
             if (dow <= 5)

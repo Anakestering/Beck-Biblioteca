@@ -2,9 +2,9 @@ package com.example.demo.controller;
 
 import com.example.demo.annotations.Admin;
 import com.example.demo.dtoEstatisticas.*;
-import com.example.demo.service.HeatmapService;
 import com.example.demo.service.EstatisticasService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.demo.service.EstatisticasUsuariosService;
+import com.example.demo.service.HeatmapService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +16,18 @@ import java.util.Map;
 @RequestMapping("/estatisticas")
 public class EstatisticasController {
 
-    @Autowired
-    private EstatisticasService estatisticasService;
+    // Constructor injection: imutável, testável, dependências visíveis na startup
+    private final EstatisticasService estatisticasService;
+    private final HeatmapService heatmapService;
+    private final EstatisticasUsuariosService estatisticasUsuariosService;
 
-    @Autowired
-    private HeatmapService heatmapService;
+    public EstatisticasController(EstatisticasService estatisticasService,
+                                   HeatmapService heatmapService,
+                                   EstatisticasUsuariosService estatisticasUsuariosService) {
+        this.estatisticasService = estatisticasService;
+        this.heatmapService = heatmapService;
+        this.estatisticasUsuariosService = estatisticasUsuariosService;
+    }
 
     // ─── Salas ────────────────────────────────────────────────────────────────
 
@@ -29,8 +36,9 @@ public class EstatisticasController {
     public List<EstatisticasRecursoDTO> getRecursosSalas(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim,
-            @RequestParam(required = false) List<Long> salaIds) {
-        return estatisticasService.getRecursosSalas(inicio, fim, salaIds);
+            @RequestParam(required = false) List<Long> salaIds,
+            @RequestParam(defaultValue = "30") int diasFuturo) {
+        return estatisticasService.getRecursosSalas(inicio, fim, salaIds, diasFuturo);
     }
 
     // ─── Computadores ─────────────────────────────────────────────────────────
@@ -40,8 +48,9 @@ public class EstatisticasController {
     public List<EstatisticasRecursoDTO> getRecursosComputadores(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim,
-            @RequestParam(required = false) List<Long> computadorIds) {
-        return estatisticasService.getRecursosComputadores(inicio, fim, computadorIds);
+            @RequestParam(required = false) List<Long> computadorIds,
+            @RequestParam(defaultValue = "30") int diasFuturo) {
+        return estatisticasService.getRecursosComputadores(inicio, fim, computadorIds, diasFuturo);
     }
 
     // ─── Status das Reservas ──────────────────────────────────────────────────
@@ -82,8 +91,8 @@ public class EstatisticasController {
         return estatisticasService.getRankingUsuarios();
     }
 
-     // ─── Ocupação por dia da semana ───────────────────────────────────────────
- 
+    // ─── Ocupação por dia da semana ──────────────────────────────────────────────
+
     @Admin
     @GetMapping("/ocupacao-semana")
     public List<EstatisticasOcupacaoDiaDTO> getOcupacaoSemana(
@@ -93,8 +102,8 @@ public class EstatisticasController {
     }
 
 
-    // ─── Resumo (cards do topo) ───────────────────────────────────────────────
- 
+    // ─── Resumo (cards do topo) ──────────────────────────────────────────────────
+
     @Admin
     @GetMapping("/resumo")
     public EstatisticasResumoDTO getResumo(
@@ -102,7 +111,6 @@ public class EstatisticasController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim) {
         return estatisticasService.getResumo(inicio, fim);
     }
- 
 
     // ─── Histórico Linear ─────────────────────────────────────────────────────
 
@@ -113,5 +121,15 @@ public class EstatisticasController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim,
             @RequestParam(defaultValue = "dia") String agrupamento) {
         return estatisticasService.getHistorico(inicio, fim, agrupamento);
+    }
+
+    // ─── Estatísticas de Usuários ─────────────────────────────────────────────
+
+    @Admin
+    @GetMapping("/usuarios")
+    public EstatisticasUsuariosDTO getEstatisticasUsuarios(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime inicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fim) {
+        return estatisticasUsuariosService.getEstatisticasUsuarios(inicio, fim);
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.example.demo.entity.Usuario;
 import com.example.demo.enums.NivelAcesso;
+import com.example.demo.enums.TipoUsuario;
 import com.example.demo.repository.UsuarioRepository;
 
 @Configuration
@@ -28,6 +29,7 @@ public class DataInitializer {
                 usuario.setCpf("11111111111");
                 usuario.setEmail("admin@admin.com");
                 usuario.setNivelAcesso(NivelAcesso.ADMIN);
+                usuario.setTipoUsuario(TipoUsuario.COLABORADOR);
                 usuario.setSenha(passwordEncoder.encode("111111"));
 
                 repository.save(usuario);
@@ -38,6 +40,7 @@ public class DataInitializer {
                 padrao.setCpf("22222222222");
                 padrao.setEmail("user@user.com");
                 padrao.setNivelAcesso(NivelAcesso.PADRAO);
+                padrao.setTipoUsuario(TipoUsuario.OUTRO);
                 padrao.setSenha(passwordEncoder.encode("222222"));
                 repository.save(padrao);
 

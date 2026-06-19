@@ -162,4 +162,98 @@ public interface PedidoReservaRepository extends BaseRepository<PedidoReserva, L
                         @Param("inicio") LocalDateTime inicio,
                         @Param("fim") LocalDateTime fim);
 
+        // ─── Estatísticas de Usuários ─────────────────────────────────────────────
+
+        /**
+         * Distribuição por tipo de usuário para um dado status de pedido.
+         * Retorna: [tipoUsuario, count(distinct usuario), count(pedidos)]
+         */
+        @Query("""
+                        SELECT u.tipoUsuario,
+                               COUNT(DISTINCT u.id),
+                               COUNT(p)
+                        FROM PedidoReserva p
+                        JOIN p.usuario u
+                        WHERE p.ativo = TRUE
+                          AND p.status = :status
+                          AND u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                          AND (:inicio IS NULL OR p.inicioPrevisto >= :inicio)
+                          AND (:fim    IS NULL OR p.inicioPrevisto <= :fim)
+                        GROUP BY u.tipoUsuario
+                    """)
+        List<Object[]> findDistribuicaoPorTipoEStatus(
+                        @Param("status") com.example.demo.enums.StatusReserva status,
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
+
+        /**
+         * Ranking de usuários com ao menos 1 pedido finalizado no período.
+         * Retorna: [id, nome, tipoUsuario, finalizados, cancelados, abandono]
+         */
+        @Query("""
+                        SELECT u.id, u.nome, u.tipoUsuario, u.cpf,
+                               SUM(CASE WHEN p.status = 'FINALIZADA' THEN 1 ELSE 0 END),
+                               SUM(CASE WHEN p.status = 'CANCELADA'  THEN 1 ELSE 0 END),
+                               SUM(CASE WHEN p.status = 'ATRASADO'   THEN 1 ELSE 0 END)
+                        FROM PedidoReserva p
+                        JOIN p.usuario u
+                        WHERE p.ativo = TRUE
+                          AND u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                          AND (:inicio IS NULL OR p.inicioPrevisto >= :inicio)
+                          AND (:fim    IS NULL OR p.inicioPrevisto <= :fim)
+                        GROUP BY u.id, u.nome, u.tipoUsuario, u.cpf
+                        HAVING SUM(CASE WHEN p.status = 'FINALIZADA' THEN 1 ELSE 0 END) > 0
+                        ORDER BY SUM(CASE WHEN p.status = 'FINALIZADA' THEN 1 ELSE 0 END) DESC
+                    """)
+        List<Object[]> findRankingUsuariosNoPeriodo(
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
+
+        /**
+         * Usuários com pedidos no período mas 0 finalizados (não compareceram).
+         * Retorna: [id, nome, tipoUsuario, cancelados, abandono]
+         */
+        @Query("""
+                        SELECT u.id, u.nome, u.tipoUsuario, u.cpf,
+                               SUM(CASE WHEN p.status = 'CANCELADA' THEN 1 ELSE 0 END),
+                               SUM(CASE WHEN p.status = 'ATRASADO'  THEN 1 ELSE 0 END)
+                        FROM PedidoReserva p
+                        JOIN p.usuario u
+                        WHERE p.ativo = TRUE
+                          AND u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                          AND (:inicio IS NULL OR p.inicioPrevisto >= :inicio)
+                          AND (:fim    IS NULL OR p.inicioPrevisto <= :fim)
+                        GROUP BY u.id, u.nome, u.tipoUsuario, u.cpf
+                        HAVING SUM(CASE WHEN p.status = 'FINALIZADA' THEN 1 ELSE 0 END) = 0
+                        ORDER BY (SUM(CASE WHEN p.status = 'CANCELADA' THEN 1 ELSE 0 END) +
+                                  SUM(CASE WHEN p.status = 'ATRASADO'  THEN 1 ELSE 0 END)) DESC
+                    """)
+        List<Object[]> findNaoComparaceramNoPeriodo(
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
+
+        /**
+         * Primeiro uso por mês — usuários cuja primeira finalizada ocorreu em cada mês do período.
+         * Retorna: [mes (yyyy-MM), count]
+         */
+        @Query(value = """
+                        SELECT DATE_FORMAT(primeira.min_data, '%Y-%m') AS mes,
+                               COUNT(*) AS total
+                        FROM (
+                            SELECT p.usuario_id, MIN(p.inicio_previsto) AS min_data
+                            FROM pedido_reserva p
+                            JOIN usuario u ON u.id = p.usuario_id
+                            WHERE p.ativo = TRUE
+                              AND p.status = 'FINALIZADA'
+                              AND u.nivel_acesso <> 'ADMIN'
+                            GROUP BY p.usuario_id
+                        ) primeira
+                        WHERE (:inicio IS NULL OR primeira.min_data >= :inicio)
+                          AND (:fim    IS NULL OR primeira.min_data <= :fim)
+                        GROUP BY mes
+                        ORDER BY mes ASC
+                    """, nativeQuery = true)
+        List<Object[]> findPrimeiroUsoPorMes(
+                        @Param("inicio") LocalDateTime inicio,
+                        @Param("fim") LocalDateTime fim);
 }

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.annotations.Public;
 import com.example.demo.config.JwtUtil;
+import com.example.demo.enums.StatusConta;
 import com.example.demo.dto.AuthDTO;
 import com.example.demo.dto.RecuperacaoSolicitacaoDTO;
 import com.example.demo.dto.RecuperarSenhaDTO;
@@ -71,9 +72,16 @@ public class AuthController {
 
         Optional<Usuario> usuarioOpt = usuarioRepository.findByEmail(email);
 
-        if (usuarioOpt.isPresent() && usuarioOpt.get().getSenha() == null) {
-            return ResponseEntity.status(403).body(
-                Map.of("message", "Confirme seu email e crie sua senha antes de entrar."));
+        if (usuarioOpt.isPresent()) {
+            StatusConta status = usuarioOpt.get().getStatusConta();
+            if (status == StatusConta.PENDENTE) {
+                return ResponseEntity.status(403).body(
+                    Map.of("message", "Confirme seu email e crie sua senha antes de entrar."));
+            }
+            if (status == StatusConta.INATIVO) {
+                return ResponseEntity.status(403).body(
+                    Map.of("message", "Esta conta foi desativada. Entre em contato com o administrador."));
+            }
         }
 
         if (usuarioOpt.isPresent() && passwordEncoder.matches(senha, usuarioOpt.get().getSenha())) {

@@ -193,5 +193,19 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
       LocalDateTime inicio,
       LocalDateTime fim);
 
-      
+  // Somade minutos de reservas futuras (APROVADA/PENDENTE) por sala
+  @Query("""
+        SELECT r.sala.id, SUM(FUNCTION('TIMESTAMPDIFF', MINUTE, r.inicioPrevisto, r.fimPrevisto))
+        FROM ReservaSala r
+        WHERE r.ativo = TRUE
+          AND r.status IN ('APROVADA', 'PENDENTE_APROVACAO')
+          AND r.inicioPrevisto >= :agora
+          AND r.inicioPrevisto <= :limite
+          AND (:salaIds IS NULL OR r.sala.id IN :salaIds)
+        GROUP BY r.sala.id
+      """)
+  List<Object[]> findMinutosFuturosPorSala(
+      @Param("agora") LocalDateTime agora,
+      @Param("limite") LocalDateTime limite,
+      @Param("salaIds") List<Long> salaIds);
 }

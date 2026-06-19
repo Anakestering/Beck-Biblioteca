@@ -207,5 +207,19 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
       LocalDateTime inicio,
       LocalDateTime fim);
 
-      
+  // Soma  de minutos de reservas futuras (APROVADA/PENDENTE) por computador
+  @Query("""
+        SELECT r.computador.id, SUM(FUNCTION('TIMESTAMPDIFF', MINUTE, r.inicioPrevisto, r.fimPrevisto))
+        FROM ReservaComputador r
+        WHERE r.ativo = TRUE
+          AND r.status IN ('APROVADA', 'PENDENTE_APROVACAO')
+          AND r.inicioPrevisto >= :agora
+          AND r.inicioPrevisto <= :limite
+          AND (:computadorIds IS NULL OR r.computador.id IN :computadorIds)
+        GROUP BY r.computador.id
+      """)
+  List<Object[]> findMinutosFuturosPorComputador(
+      @Param("agora") LocalDateTime agora,
+      @Param("limite") LocalDateTime limite,
+      @Param("computadorIds") List<Long> computadorIds);
 }

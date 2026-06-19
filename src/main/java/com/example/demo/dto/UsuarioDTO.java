@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.example.demo.enums.StatusConta;
 import com.example.demo.enums.TipoUsuario;
 
 @Data
@@ -44,6 +45,7 @@ public class UsuarioDTO {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private java.time.LocalDateTime createdAt;
 
+    /** Status atual da conta: ATIVO, PENDENTE ou INATIVO. Somente leitura. */
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-    private Boolean pendente;
+    private StatusConta statusConta;
 }

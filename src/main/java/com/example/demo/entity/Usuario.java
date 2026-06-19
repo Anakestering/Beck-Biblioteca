@@ -3,6 +3,8 @@ package com.example.demo.entity;
 import java.time.LocalDateTime;
 
 import com.example.demo.enums.NivelAcesso;
+import com.example.demo.enums.StatusConta;
+import com.example.demo.enums.TipoUsuario;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,7 +15,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import com.example.demo.enums.TipoUsuario;
 
 @Data
 @AllArgsConstructor
@@ -45,6 +46,15 @@ public class Usuario extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_usuario", nullable = false)
     private TipoUsuario tipoUsuario;
+
+    /**
+     * Status da conta. O Hibernate adiciona a coluna automaticamente (ddl-auto=update)
+     * com DEFAULT 'ATIVO'. O StatusContaMigration corrige registros legados na startup.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_conta", nullable = false,
+            columnDefinition = "VARCHAR(20) NOT NULL DEFAULT 'ATIVO'")
+    private StatusConta statusConta = StatusConta.PENDENTE;
 
     private String codigoRecuperacao;
 

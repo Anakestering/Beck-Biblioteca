@@ -5,5 +5,6 @@ public record EstatisticasRecursoDTO(
     String nome,
     long totalMinutosUsados,
     long totalReservasFinalizadas,
-    long minutosDisponiveis   // diasUteis * 900min — calculado no backend
+    long minutosDisponiveis,        // diasUteis * 900min — calculado no backend
+    long minutosReservadosFuturos   // soma de duração de reservas APROVADA/PENDENTE futuras
 ) {}

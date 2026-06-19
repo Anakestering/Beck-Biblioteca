@@ -24,6 +24,7 @@ import com.example.demo.dto.UsuarioStatsDTO;
 import com.example.demo.entity.Usuario;
 import com.example.demo.entity.UsuarioOutroInfo;
 import com.example.demo.enums.NivelAcesso;
+import com.example.demo.enums.StatusConta;
 import com.example.demo.enums.TipoUsuario;
 import com.example.demo.repository.UsuarioOutroInfoRepository;
 import com.example.demo.repository.UsuarioRepository;
@@ -62,6 +63,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         usuario.setEmail(dto.getEmail());
         usuario.setTelefone(dto.getTelefone());
         usuario.setAtivo(true);
+        usuario.setStatusConta(StatusConta.PENDENTE); // aguarda criacao de senha
         usuario.setNivelAcesso(NivelAcesso.PADRAO);
         usuario.setTipoUsuario(dto.getTipoUsuario());
 
@@ -151,7 +153,19 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
         Usuario usuario = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
         usuario.setAtivo(true);
+        usuario.setStatusConta(StatusConta.ATIVO);
         usuario.setDeletedAt(null);
+        repo.save(usuario);
+    }
+
+    // ─── Desativar ───────────────────────────────────────────────────────────────
+
+    @Transactional
+    public void desativar(Long id) {
+        Usuario usuario = repo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Usuario nao encontrado"));
+        usuario.setAtivo(false);
+        usuario.setStatusConta(StatusConta.INATIVO);
         repo.save(usuario);
     }
 
@@ -178,7 +192,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
                 .atStartOfDay();
 
         long total = repo.count();
-        long ativos = repo.countByAtivo(true);
+        long ativos = repo.countByStatusConta(StatusConta.ATIVO);
         long semana = repo.countByCreatedAtGreaterThanEqual(inicioDaSemana);
 
         return new UsuarioStatsDTO(total, ativos, semana);
@@ -237,6 +251,10 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorreto.");
 
         usuario.setSenha(passwordEncoder.encode(dto.getNovaSenha()));
+        // Só ativa se estava PENDENTE. INATIVO permanece bloqueado — apenas admin reativa.
+        if (usuario.getStatusConta() == StatusConta.PENDENTE) {
+            usuario.setStatusConta(StatusConta.ATIVO);
+        }
         usuario.setCodigoRecuperacao(null);
         usuario.setCodigoRecuperacaoExpiracao(null);
         repo.save(usuario);
@@ -255,7 +273,7 @@ public class UsuarioService extends BaseService<Usuario, UsuarioDTO> {
 
     private UsuarioDTO toDtoComOutroInfo(Usuario u) {
         UsuarioDTO dto = toDto(u);
-        dto.setPendente(u.getSenha() == null);
+        dto.setStatusConta(u.getStatusConta());
         if (u.getTipoUsuario() == TipoUsuario.OUTRO) {
             outroInfoRepo.findByUsuarioIdAndAtivoTrue(u.getId()).ifPresent(info -> {
                 dto.setOutroInfo(new UsuarioOutroInfoDTO(

@@ -80,4 +80,61 @@ public interface UsuarioRepository extends BaseRepository<Usuario, Long> {
                   AND (:fim IS NULL OR r.checkoutEm <= :fim)
             """)
     long countUsuariosAtivos(LocalDateTime inicio, LocalDateTime fim);
+
+    @Query("SELECT COUNT(u) FROM Usuario u WHERE u.statusConta = :statusConta")
+    long countByStatusConta(@Param("statusConta") com.example.demo.enums.StatusConta statusConta);
+
+    @Query("""
+                SELECT COUNT(u) FROM Usuario u
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.ativo = TRUE
+            """)
+    long countUsuariosCadastrados();
+
+    @Query("""
+                SELECT FUNCTION('DATE_FORMAT', u.createdAt, '%Y-%m') as mes,
+                       COUNT(u) as total
+                FROM Usuario u
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.ativo = TRUE
+                  AND (:inicio IS NULL OR u.createdAt >= :inicio)
+                  AND (:fim IS NULL OR u.createdAt <= :fim)
+                GROUP BY mes
+                ORDER BY mes ASC
+            """)
+    List<Object[]> findNovosCadastrosPorMes(LocalDateTime inicio, LocalDateTime fim);
+
+    /** Total de usuários cadastrados agrupado por tipoUsuario. Retorna: [tipoUsuario, count] */
+    @Query("""
+                SELECT u.tipoUsuario, COUNT(u)
+                FROM Usuario u
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.ativo = TRUE
+                GROUP BY u.tipoUsuario
+            """)
+    List<Object[]> findTotalByTipoUsuario();
+
+    /** Novos cadastros no período agrupado por tipoUsuario. Retorna: [tipoUsuario, count] */
+    @Query("""
+                SELECT u.tipoUsuario, COUNT(u)
+                FROM Usuario u
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.ativo = TRUE
+                  AND (:inicio IS NULL OR u.createdAt >= :inicio)
+                  AND (:fim IS NULL OR u.createdAt <= :fim)
+                GROUP BY u.tipoUsuario
+            """)
+    List<Object[]> findNovosByTipoUsuario(
+            @Param("inicio") LocalDateTime inicio,
+            @Param("fim") LocalDateTime fim);
+
+    /** Usuários com statusConta = ATIVO agrupado por tipoUsuario. Retorna: [tipoUsuario, count] */
+    @Query("""
+                SELECT u.tipoUsuario, COUNT(u)
+                FROM Usuario u
+                WHERE u.nivelAcesso <> com.example.demo.enums.NivelAcesso.ADMIN
+                  AND u.statusConta = com.example.demo.enums.StatusConta.ATIVO
+                GROUP BY u.tipoUsuario
+            """)
+    List<Object[]> findAtivosByTipoUsuario();
 }
