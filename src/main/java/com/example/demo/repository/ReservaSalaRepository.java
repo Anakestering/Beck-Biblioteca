@@ -120,6 +120,32 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
 
   // ─── Relatórios───────────────────────────────────────────────────────────────
 
+  // Projeção leve: só inicio_previsto — para o gráfico de histórico
+  @Query("""
+          SELECT r.inicioPrevisto FROM ReservaSala r
+          WHERE r.status = 'FINALIZADA'
+            AND r.ativo = TRUE
+            AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+            AND (:fim IS NULL OR r.checkoutEm <= :fim)
+      """)
+  List<LocalDateTime> findIniciosFinalizados(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
+
+  // Projeção leve: só checkin/checkout — para ocupação por dia da semana
+  @Query("""
+          SELECT r.checkinEm, r.checkoutEm FROM ReservaSala r
+          WHERE r.status = 'FINALIZADA'
+            AND r.ativo = TRUE
+            AND r.checkinEm IS NOT NULL
+            AND r.checkoutEm IS NOT NULL
+            AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+            AND (:fim IS NULL OR r.checkoutEm <= :fim)
+      """)
+  List<Object[]> findCheckinCheckoutFinalizados(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
+
   @Query("""
           SELECT r FROM ReservaSala r
           LEFT JOIN FETCH r.sala
@@ -192,6 +218,22 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
   List<Object[]> findHeatmapParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim);
+
+  // Soma de minutos de reservas finalizadas por sala (para resumo)
+  @Query("""
+        SELECT r.sala.id, SUM(FUNCTION('TIMESTAMPDIFF', MINUTE, r.checkinEm, r.checkoutEm))
+        FROM ReservaSala r
+        WHERE r.ativo = TRUE
+          AND r.status = 'FINALIZADA'
+          AND r.checkinEm IS NOT NULL
+          AND r.checkoutEm IS NOT NULL
+          AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+          AND (:fim IS NULL OR r.checkoutEm <= :fim)
+        GROUP BY r.sala.id
+      """)
+  List<Object[]> findMinutosFinalizadosPorSala(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
 
   // Somade minutos de reservas futuras (APROVADA/PENDENTE) por sala
   @Query("""

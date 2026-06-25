@@ -201,29 +201,25 @@ public class EstatisticasService {
 
     public EstatisticasHistoricoDTO getHistorico(LocalDateTime inicio, LocalDateTime fim, String agrupamento) {
 
-        // ─── Pedidos finalizados e atrasados (métricas principais) ───────────
+        // ─── Pedidos (para taxa de abandono e média de pessoas) ─────────────
         List<PedidoReserva> pedidosFinalizados = pedidoRepo.findFinalizadasParaEstatisticas(inicio, fim);
         List<PedidoReserva> pedidosAtrasados   = pedidoRepo.findAtrasadasParaEstatisticas(inicio, fim);
 
-        // ─── Reservas individuais (contexto: recursos utilizados por data) ───
-        List<ReservaSala>      reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
-        List<ReservaComputador> reservasPc  = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+        // ─── Reservas individuais — linha principal do gráfico (só inicioPrevisto) ──
+        List<LocalDateTime> iniciosSala = reservaSalaRepo.findIniciosFinalizados(inicio, fim);
+        List<LocalDateTime> iniciosPc   = reservaComputadorRepo.findIniciosFinalizados(inicio, fim);
 
-        // ─── Agregação de pedidos finalizados por data ────────────────────────
+        // ─── Agrega reservas individuais por data (linha principal) ──────────
         TreeMap<LocalDate, Long> agregadoPedidos = new TreeMap<>();
-        for (PedidoReserva p : pedidosFinalizados)
-            agregadoPedidos.merge(chaveData(p.getInicioPrevisto(), agrupamento), 1L, Long::sum);
+        for (LocalDateTime dt : iniciosSala)
+            agregadoPedidos.merge(chaveData(dt, agrupamento), 1L, Long::sum);
+        for (LocalDateTime dt : iniciosPc)
+            agregadoPedidos.merge(chaveData(dt, agrupamento), 1L, Long::sum);
 
-        // ─── Agregação de recursos individuais por data (para tooltip) ───────
+        // ─── Agrega pedidos por data (para tooltip — representa visitas) ──────
         TreeMap<LocalDate, Long> agregadoReservas = new TreeMap<>();
-        for (ReservaSala r : reservasSala) {
-            if (r.getCheckinEm() == null) continue;
-            agregadoReservas.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
-        }
-        for (ReservaComputador r : reservasPc) {
-            if (r.getCheckinEm() == null) continue;
-            agregadoReservas.merge(chaveData(r.getCheckinEm(), agrupamento), 1L, Long::sum);
-        }
+        for (PedidoReserva p : pedidosFinalizados)
+            agregadoReservas.merge(chaveData(p.getInicioPrevisto(), agrupamento), 1L, Long::sum);
 
         // ─── Agregação de abandonos por data (pedidos ATRASADO) ──────────────
         TreeMap<LocalDate, Long> agregadoAbandono = new TreeMap<>();
@@ -310,31 +306,27 @@ public class EstatisticasService {
     // ─── Ocupação por dia da semana ───────────────────────────────────────────
 
     public List<EstatisticasOcupacaoDiaDTO> getOcupacaoSemana(LocalDateTime inicio, LocalDateTime fim) {
-        List<ReservaSala> reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
-        List<ReservaComputador> reservasPc = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+        List<Object[]> rowsSala = reservaSalaRepo.findCheckinCheckoutFinalizados(inicio, fim);
+        List<Object[]> rowsPc   = reservaComputadorRepo.findCheckinCheckoutFinalizados(inicio, fim);
 
         // Minutos usados agrupados por dia da semana (1=Seg ... 5=Sex)
         Map<Integer, Long> minutosUsadosPorDia = new HashMap<>();
         for (int i = 1; i <= 5; i++)
             minutosUsadosPorDia.put(i, 0L);
 
-        for (ReservaSala r : reservasSala) {
-            if (r.getCheckinEm() == null || r.getCheckoutEm() == null)
-                continue;
-            int dow = r.getCheckinEm().getDayOfWeek().getValue(); // 1=Seg...7=Dom
-            if (dow > 5)
-                continue;
-            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
-            minutosUsadosPorDia.merge(dow, mins, Long::sum);
+        for (Object[] row : rowsSala) {
+            LocalDateTime checkin  = (LocalDateTime) row[0];
+            LocalDateTime checkout = (LocalDateTime) row[1];
+            int dow = checkin.getDayOfWeek().getValue();
+            if (dow > 5) continue;
+            minutosUsadosPorDia.merge(dow, Duration.between(checkin, checkout).toMinutes(), Long::sum);
         }
-        for (ReservaComputador r : reservasPc) {
-            if (r.getCheckinEm() == null || r.getCheckoutEm() == null)
-                continue;
-            int dow = r.getCheckinEm().getDayOfWeek().getValue();
-            if (dow > 5)
-                continue;
-            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
-            minutosUsadosPorDia.merge(dow, mins, Long::sum);
+        for (Object[] row : rowsPc) {
+            LocalDateTime checkin  = (LocalDateTime) row[0];
+            LocalDateTime checkout = (LocalDateTime) row[1];
+            int dow = checkin.getDayOfWeek().getValue();
+            if (dow > 5) continue;
+            minutosUsadosPorDia.merge(dow, Duration.between(checkin, checkout).toMinutes(), Long::sum);
         }
 
         // Quantas vezes cada dia da semana aparece no período (ex: 52 segundas num ano)
@@ -347,8 +339,8 @@ public class EstatisticasService {
         LocalDateTime fimEfetivo    = fim;
         if (inicioEfetivo == null) {
             inicioEfetivo = java.util.stream.Stream.concat(
-                    reservasSala.stream().filter(r -> r.getCheckinEm() != null).map(ReservaSala::getCheckinEm),
-                    reservasPc.stream().filter(r -> r.getCheckinEm() != null).map(ReservaComputador::getCheckinEm)
+                    rowsSala.stream().map(r -> (LocalDateTime) r[0]),
+                    rowsPc.stream().map(r -> (LocalDateTime) r[0])
             ).min(Comparator.naturalOrder()).orElse(LocalDateTime.now().minusYears(5));
         }
         if (fimEfetivo == null) fimEfetivo = LocalDateTime.now();
@@ -365,10 +357,10 @@ public class EstatisticasService {
         // Taxa = minutos usados / (ocorrencias * 900min disponíveis por dia)
         final long MINUTOS_DIA = 15 * 60L; // 7h–22h = 900min
         String[] nomes = { "", "Seg", "Ter", "Qua", "Qui", "Sex" };
+        long totalRecursos = computadorRepo.countByAtivoTrue() + salaRepo.countByAtivoTrue();
 
         List<EstatisticasOcupacaoDiaDTO> resultado = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
-            long totalRecursos = computadorRepo.countByAtivoTrue() + salaRepo.countByAtivoTrue();
             long disponiveis = ocorrenciasPorDia.get(i) * MINUTOS_DIA * totalRecursos;
             double taxa = disponiveis > 0
                     ? Math.min(100.0, Math.round((minutosUsadosPorDia.get(i) * 1000.0) / disponiveis) / 10.0)
@@ -445,29 +437,14 @@ public class EstatisticasService {
                 ? Math.round((atrasadas * 100.0 / (finalizadas + atrasadas)) * 10.0) / 10.0
                 : 0.0;
 
-        // Minutos usados e recurso mais usado — direto das reservas finalizadas
-        List<ReservaSala> reservasSala = reservaSalaRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
-        List<ReservaComputador> reservasPc = reservaComputadorRepo.findFinalizadasParaEstatisticas(inicio, fim, null);
+        // Minutos usados por recurso — via queries de agregação SQL (sem carregar entidades)
+        Map<Long, Long> minutosSalaMap = acumularMinutosDasRows(
+                reservaSalaRepo.findMinutosFinalizadosPorSala(inicio, fim));
+        Map<Long, Long> minutosPcMap = acumularMinutosDasRows(
+                reservaComputadorRepo.findMinutosFinalizadosPorComputador(inicio, fim));
 
         long disponiveis = calcularMinutosDisponiveis(inicio, fim);
 
-        // Agrupa minutos por sala
-        Map<Long, long[]> minutosSala = new HashMap<>();
-        for (ReservaSala r : reservasSala) {
-            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
-            minutosSala.computeIfAbsent(r.getSala().getId(), k -> new long[]{0, 0});
-            minutosSala.get(r.getSala().getId())[0] += mins;
-        }
-
-        // Agrupa minutos por computador
-        Map<Long, long[]> minutosPc = new HashMap<>();
-        for (ReservaComputador r : reservasPc) {
-            long mins = Duration.between(r.getCheckinEm(), r.getCheckoutEm()).toMinutes();
-            minutosPc.computeIfAbsent(r.getComputador().getId(), k -> new long[]{0, 0});
-            minutosPc.get(r.getComputador().getId())[0] += mins;
-        }
-
-        // Calcula ocupação média e recurso mais usado sem chamar os métodos públicos
         List<Sala> todasSalas = salaRepo.findAll();
         List<Computador> todosComputadores = computadorRepo.findAll();
 
@@ -478,7 +455,7 @@ public class EstatisticasService {
         long maxMinutos = -1;
 
         for (Sala s : todasSalas) {
-            long usados = minutosSala.containsKey(s.getId()) ? minutosSala.get(s.getId())[0] : 0;
+            long usados = minutosSalaMap.getOrDefault(s.getId(), 0L);
             if (disponiveis > 0) {
                 somaOcupacao += (usados * 100.0) / disponiveis;
                 totalComDisponiveis++;
@@ -491,7 +468,7 @@ public class EstatisticasService {
         }
 
         for (Computador c : todosComputadores) {
-            long usados = minutosPc.containsKey(c.getId()) ? minutosPc.get(c.getId())[0] : 0;
+            long usados = minutosPcMap.getOrDefault(c.getId(), 0L);
             if (disponiveis > 0) {
                 somaOcupacao += (usados * 100.0) / disponiveis;
                 totalComDisponiveis++;

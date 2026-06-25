@@ -11,7 +11,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name = "reserva_sala")
+@Table(name = "reserva_sala", indexes = {
+    @Index(name = "idx_rs_ativo_status_checkin",  columnList = "ativo, status, checkin_em, checkout_em"),
+    @Index(name = "idx_rs_ativo_status_inicio",   columnList = "ativo, status, inicio_previsto"),
+    @Index(name = "idx_rs_heatmap",               columnList = "usuario_id, sala_id, checkin_em, inicio_previsto, status, ativo"),
+})
 @EqualsAndHashCode(callSuper = false)
 public class ReservaSala extends BaseEntity {
 

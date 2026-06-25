@@ -134,6 +134,32 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
 
   // ─── Relatórios───────────────────────────────────────────────────────────────
 
+  // Projeção leve: só inicio_previsto — para o gráfico de histórico
+  @Query("""
+          SELECT r.inicioPrevisto FROM ReservaComputador r
+          WHERE r.status = 'FINALIZADA'
+            AND r.ativo = TRUE
+            AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+            AND (:fim IS NULL OR r.checkoutEm <= :fim)
+      """)
+  List<LocalDateTime> findIniciosFinalizados(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
+
+  // Projeção leve: só checkin/checkout — para ocupação por dia da semana
+  @Query("""
+          SELECT r.checkinEm, r.checkoutEm FROM ReservaComputador r
+          WHERE r.status = 'FINALIZADA'
+            AND r.ativo = TRUE
+            AND r.checkinEm IS NOT NULL
+            AND r.checkoutEm IS NOT NULL
+            AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+            AND (:fim IS NULL OR r.checkoutEm <= :fim)
+      """)
+  List<Object[]> findCheckinCheckoutFinalizados(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
+
   @Query("""
           SELECT r FROM ReservaComputador r
           LEFT JOIN FETCH r.computador
@@ -206,6 +232,22 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
   List<Object[]> findHeatmapParaEstatisticas(
       LocalDateTime inicio,
       LocalDateTime fim);
+
+  // Soma de minutos de reservas finalizadas por computador (para resumo)
+  @Query("""
+        SELECT r.computador.id, SUM(FUNCTION('TIMESTAMPDIFF', MINUTE, r.checkinEm, r.checkoutEm))
+        FROM ReservaComputador r
+        WHERE r.ativo = TRUE
+          AND r.status = 'FINALIZADA'
+          AND r.checkinEm IS NOT NULL
+          AND r.checkoutEm IS NOT NULL
+          AND (:inicio IS NULL OR r.checkinEm >= :inicio)
+          AND (:fim IS NULL OR r.checkoutEm <= :fim)
+        GROUP BY r.computador.id
+      """)
+  List<Object[]> findMinutosFinalizadosPorComputador(
+      @Param("inicio") LocalDateTime inicio,
+      @Param("fim") LocalDateTime fim);
 
   // Soma  de minutos de reservas futuras (APROVADA/PENDENTE) por computador
   @Query("""

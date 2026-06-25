@@ -43,14 +43,10 @@ public class HeatmapService {
         List<Object[]> salaRows = reservaSalaRepo.findHeatmapParaEstatisticas(inicio, fim);
         List<Object[]> pcRows = reservaComputadorRepo.findHeatmapParaEstatisticas(inicio, fim);
 
-        System.out.println("Salas: " + salaRows.size() + " linhas");
-        System.out.println("PCs: " + pcRows.size() + " linhas");
-
         for (Object[] row : salaRows) {
             LocalDateTime checkin = toLocalDateTime(row[0]);
             LocalDateTime checkout = toLocalDateTime(row[1]);
             long pessoas = ((Number) row[2]).longValue();
-            System.out.println("SALA: " + checkin + " -> " + checkout + " | " + pessoas + "p");
             distribuirHoras(checkin, checkout, pessoas, totais);
         }
 
@@ -58,7 +54,6 @@ public class HeatmapService {
             LocalDateTime checkin = toLocalDateTime(row[0]);
             LocalDateTime checkout = toLocalDateTime(row[1]);
             long pessoas = ((Number) row[2]).longValue();
-            System.out.println("PC: " + checkin + " -> " + checkout + " | " + pessoas + "p");
             distribuirHoras(checkin, checkout, pessoas, totais);
         }
 
