@@ -154,7 +154,7 @@ public interface ReservaComputadorRepository extends BaseRepository<ReservaCompu
             AND (:inicio IS NULL OR r.inicioPrevisto >= :inicio)
             AND (:fim IS NULL OR r.fimPrevisto <= :fim)
             AND (:computadorIds IS NULL OR r.computador.id IN :computadorIds)
-            AND r.status IN ('FINALIZADA', 'CANCELADA', 'ATRASADO', 'REJEITADA')
+            AND r.status IN ('FINALIZADA', 'CANCELADA', 'LIBERADA_ANTECIPADA', 'ATRASADO', 'REJEITADA')
           GROUP BY r.computador.id, r.status
       """)
   List<Object[]> findStatusReservasParaEstatisticas(

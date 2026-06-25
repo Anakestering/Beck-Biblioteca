@@ -163,7 +163,7 @@ public class ReservaSalaService {
         reserva.setCheckoutAutomatico(false);
         reservaRepo.save(reserva);
 
-        // Cancela blocos seguintes EM_ANDAMENTO
+        // Libera blocos seguintes EM_ANDAMENTO (checkout antecipado — usuário usou e saiu antes)
         LocalDateTime cursor = reserva.getFimPrevisto();
         while (true) {
             Optional<ReservaSala> proximo = reservaRepo
@@ -175,7 +175,7 @@ public class ReservaSalaService {
             if (proximo.isEmpty())
                 break;
             ReservaSala r = proximo.get();
-            r.setStatus(StatusReserva.CANCELADA);
+            r.setStatus(StatusReserva.LIBERADA_ANTECIPADA);
             r.setCanceladaEm(agora);
             reservaRepo.save(r);
             cursor = r.getFimPrevisto();

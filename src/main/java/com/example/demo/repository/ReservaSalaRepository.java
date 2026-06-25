@@ -140,7 +140,7 @@ public interface ReservaSalaRepository extends BaseRepository<ReservaSala, Long>
             AND (:inicio IS NULL OR r.inicioPrevisto >= :inicio)
             AND (:fim IS NULL OR r.fimPrevisto <= :fim)
             AND (:salaIds IS NULL OR r.sala.id IN :salaIds)
-            AND r.status IN ('FINALIZADA', 'CANCELADA', 'ATRASADO', 'REJEITADA')
+            AND r.status IN ('FINALIZADA', 'CANCELADA', 'LIBERADA_ANTECIPADA', 'ATRASADO', 'REJEITADA')
           GROUP BY r.sala.id, r.status
       """)
   List<Object[]> findStatusReservasParaEstatisticas(
