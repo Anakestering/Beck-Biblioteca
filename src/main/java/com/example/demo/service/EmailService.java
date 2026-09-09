@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -22,13 +23,18 @@ public class EmailService {
     @Autowired
     private JavaMailSender mailSender;
 
+    // O remetente precisa ser a própria conta autenticada no SMTP (Gmail rejeita
+    // ou substitui remetentes que não batem com a conta que fez login).
+    @Value("${spring.mail.username}")
+    private String remetente;
+
     @Async // <─── Diz ao Spring para rodar isso em segundo plano
     public void enviarEmail(String destinatario, String titulo, String descricao) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom("senai@participativo.com.br");
+            helper.setFrom(remetente);
             helper.setTo(destinatario);
             helper.setSubject(titulo);
             helper.setText(descricao);
@@ -46,7 +52,7 @@ public class EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom("senai@participativo.com.br");
+            helper.setFrom(remetente);
             helper.setTo(destinatario);
             helper.setSubject("Seu código de acesso — Biblioteca");
 
@@ -73,7 +79,7 @@ public class EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom("senai@participativo.com.br");
+            helper.setFrom(remetente);
             helper.setTo(destinatario);
             helper.setSubject(titulo);
 
